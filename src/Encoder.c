@@ -36,8 +36,8 @@ void M1_Encoder_Config(void)
 		/* Config interrupt */
 		NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 		En_NVIC_Struct.NVIC_IRQChannel = M1_TIMx_IRQn;
-		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 0;
-		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 4;
+		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 1;
+		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 1;
 		En_NVIC_Struct.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&En_NVIC_Struct);
 		TIM_ITConfig(M1_TIMx,TIM_IT_Update,ENABLE);
@@ -73,8 +73,8 @@ void M2_Encoder_Config(void)
 		/* Config interrupt */
 		NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 		En_NVIC_Struct.NVIC_IRQChannel = M2_TIMx_IRQn;
-		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 0;
-		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 5;
+		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 1;
+		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 2;
 		En_NVIC_Struct.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&En_NVIC_Struct);
 		TIM_ITConfig(M2_TIMx,TIM_IT_Update,ENABLE);
@@ -137,28 +137,28 @@ void M1_Forward(double duty)
 {
 	duty = fabs(duty);
 	GPIO_SetBits(Dir_GPIOx,Dir_GPIO_Pin_M1);
-	PWM_TIMx->CCR1 = (duty * Frequency_20KHz) / 100;
+	PWM_TIMx->CCR1 = (uint16_t)((duty * Frequency_20KHz) / 100);
 }
 
 void M1_Backward(double duty)
 {
 	duty = fabs(duty);
 	GPIO_ResetBits(Dir_GPIOx,Dir_GPIO_Pin_M1);
-	PWM_TIMx->CCR1 = (duty * Frequency_20KHz) / 100;
+	PWM_TIMx->CCR1 = (uint16_t)((duty * Frequency_20KHz) / 100);
 }
 
 void M2_Forward(double duty)
 {
 	duty = fabs(duty);
 	GPIO_SetBits(Dir_GPIOx,Dir_GPIO_Pin_M2);
-	PWM_TIMx->CCR2 = (duty * Frequency_20KHz) / 100;
+	PWM_TIMx->CCR2 = (uint16_t)((duty * Frequency_20KHz) / 100);
 }
 
 void M2_Backward(double duty)
 {
 	duty = fabs(duty);
 	GPIO_ResetBits(Dir_GPIOx,Dir_GPIO_Pin_M2);
-	PWM_TIMx->CCR2 = (duty * Frequency_20KHz) / 100;
+	PWM_TIMx->CCR2 = (uint16_t)((duty * Frequency_20KHz) / 100);
 }
 
 void Stop_Motor(void)
@@ -167,16 +167,28 @@ void Stop_Motor(void)
 	PWM_TIMx->CCR2   = 0;
 }
 
-void Robot_Forward(double duty_left, double duty_right)
+void Robot_Forward(double duty_right, double duty_left)
 {
-	M1_Forward(duty_left);
-	M2_Forward(duty_right);
+	M1_Forward(duty_right);
+	M2_Forward(duty_left);
 }
 
-void Robot_Backward(double duty_left, double duty_right)
+void Robot_Backward(double duty_right, double duty_left)
 {
-	M1_Backward(duty_left);
-	M2_Backward(duty_right);
+	M1_Backward(duty_right);
+	M2_Backward(duty_left);
+}
+
+void Robot_Spin_ClockWise(double duty_right, double duty_left)
+{
+	M1_Backward(duty_right);
+	M2_Forward(duty_left);
+}
+
+void Robot_Spin_AntiClockWise(double duty_right, double duty_left)
+{
+	M1_Forward(duty_right);
+	M2_Backward(duty_left);
 }
 
 void Encoder_Config(void)

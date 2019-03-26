@@ -3,13 +3,18 @@
 /* Global variables */
 GPIO_InitTypeDef				 F_GPIO_Struct;
 /*----- Stanley Variables -----*/
-double 						Path_X[100] = {0};
-double					  Path_Y[100] = {0};
-int 							NbOfWP = 10;
-double 						K = 0.5;
-/*----- Robot Parameter -------*/
-double            Wheel_Radius = 0.085;   //(m)
 
+/*----- Robot Parameter -------*/
+DCMotor 					M1, M2, Ang;
+GPS   						GPS_NEO;
+IMU								Mag;
+Message  					U2, U6;
+Time							Timer;
+FlashMemory 			Flash;
+Vehicle						Veh;
+double 						NB,NM,NS,ZE,PS,PM,PB;
+trimf 						In1_NS,In1_ZE,In1_PS,In2_ZE;
+trapf 						In1_NB,In1_PB,In2_NE,In2_PO;
 /*----- Functions -----*/
 /** @brief  : Led test
 **	@agr    : void
@@ -26,50 +31,68 @@ void LedTest(void)
 	F_GPIO_Struct.GPIO_Speed				= GPIO_Speed_50MHz;
 	GPIO_Init(GPIOD,&F_GPIO_Struct);
 }
-/** @brief  : PID Control M1
-**	@agr    : Current position, Set point, Sample time T
-**	@retval : PID value
+
+/** @brief  : Function compute PID value 
+**	@agr    : void
+**	@retval : None
 **/
-double PID_ControlM1(double CurrentValue, double SetValue, double T)
+void PID_Compute(DCMotor *ipid)
 {
-	double 					PID;
-	double 					Error, P_Part, I_Part, D_Part;
-	Error 					= SetValue - CurrentValue;
-	P_Part 					= M1.Kp * (Error - M1.Pre_Error);
-	I_Part 					= 0.5 * M1.Ki * T * (Error + M1.Pre_Error);
-	D_Part					= M1.Kd / T * (Error - 2 * M1.Pre_Error + M1.Pre2_Error);
-	PID 						= M1.Pre_PID + P_Part + I_Part + D_Part;
-	M1.Pre2_Error		= M1.Pre_Error;
-	M1.Pre_Error		= Error;
-	M1.Pre_PID			= PID;
-	if(PID < (double)-100)
-		PID = (double)-100;
-	else if (PID > (double)100)
-		PID = (double)100;
-	return	PID;
+	ipid->SampleTime = &Timer.T;
+	ipid->PID_Out = ipid->Pre_PID + ipid->Kp * (ipid->Set_Vel - ipid->Current_Vel) + 0.5 * ipid->Ki * *(ipid->SampleTime) * ((ipid->Set_Vel - ipid->Current_Vel) + ipid->Pre_Error) + (ipid->Kd / *(ipid->SampleTime)) * ((ipid->Set_Vel - ipid->Current_Vel) - 2 * ipid->Pre_Error + ipid->Pre2_Error);
+	ipid->Pre2_Error = ipid->Pre_Error;
+	ipid->Pre_Error = ipid->Set_Vel - ipid->Current_Vel;
+	if(ipid->PID_Out < 0)
+		ipid->PID_Out = (double)0;
+	if(ipid->PID_Out > 100)
+		ipid->PID_Out = (double)100;
+	ipid->Pre_PID = ipid->PID_Out;
 }
 
-/** @brief  : PID Control M2
-**	@agr    : Current position, Set point, Sample time T
-**	@retval : PID value
+/** @brief  : First initial PID parameters
+**	@agr    : void
+**	@retval : None
 **/
-double PID_ControlM2(double Current, double SetValue, double T)
+void PID_ParametersInitial(DCMotor *ipid)
 {
-	double 					PID;
-	double					Error, P_Part, I_Part, D_Part;
-	Error 					= SetValue - Current;
-	P_Part 					= M2.Kp * (Error - M2.Pre_Error);
-	I_Part 					= 0.5 * M2.Ki * T * (Error + M2.Pre_Error);
-	D_Part					= M2.Kd / T * (Error - 2 * M2.Pre_Error + M2.Pre2_Error);
-	PID 						= M2.Pre_PID + P_Part + I_Part + D_Part;
-	M2.Pre2_Error		= M2.Pre_Error;
-	M2.Pre_Error		= Error;
-	M2.Pre_PID			= PID;
-	if(PID < (double)-100)
-		PID = (double)-100;
-	else if (PID > (double)100)
-		PID = (double)100;
-	return	PID;
+	ipid->Pre2_Error = 0;
+	ipid->Pre_Error = 0;
+	ipid->Pre_PID = 0;
+	ipid->PID_Out = 0;
+	ipid->Set_Vel = 30;
+	ipid->Current_Vel = 0;
+	ipid->Enc = 0;
+	ipid->PreEnc = 0;
+	ipid->OverFlow = 0;
+}
+
+/** @brief  : Set velocity update for motor
+**	@agr    : void
+**	@retval : None
+**/
+void PID_UpdateSetVel(DCMotor *ipid, double SetVal)
+{
+	ipid->Set_Vel = SetVal;
+}
+
+/** @brief  : PID update parameters function
+**	@agr    : void
+**	@retval : None
+**/
+void PID_ParametersUpdate(DCMotor *ipid, double Kp, double Ki, double Kd)
+{
+	ipid->Kp = Kp;
+	ipid->Ki = Ki;
+	ipid->Kd = Kd;
+}
+
+/** @brief  : PID update encoder counter
+**	@agr    : void
+**	@retval : None
+**/
+void	PID_UpdateEnc(DCMotor *ipid, uint16_t PulseCount)
+{
+	ipid->Enc = PulseCount;
 }
 
 /** @brief  : Convert rad to degree
@@ -94,6 +117,70 @@ double ToRadian(double degree)
 	return result;
 }
 
+/* ----------------------- Timer functions -----------------------------------*/
+void	Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send)
+{
+	ptime->Sample_Time = Sample;
+	ptime->Send_Time = Send;
+}
+
+void	Time_SampleTimeUpdate(Time *ptime, uint32_t Sample)
+{
+	ptime->Sample_Time = Sample;
+}
+
+void	Time_GetSampleTime(Time *ptime)
+{
+	ptime->T					 = ptime->Sample_Time * pow(10,-6);
+}
+
+void	Time_SendTimeUpdate(Time *ptime, uint32_t TSend)
+{
+	ptime->Send_Time = TSend;
+}
+/*------------------------ Vehicle Status Function ----------------------------*/
+void	Veh_ParametersInit(Vehicle *pveh)
+{
+	pveh->Max_Velocity = 0;
+	pveh->ManualCtrlKey = 0;
+	pveh->Manual_Angle = 0;
+	pveh->Manual_Velocity = 0;
+	pveh->Mode = 4;
+	pveh->LengthOfCommands = 0;
+}
+
+void	Veh_UpdateVehicleFromKey(Vehicle *pveh)
+{
+	if(pveh->ManualCtrlKey == 'W')
+	{
+		pveh->Manual_Velocity += 0.2 * pveh->Max_Velocity;
+	}
+	else if(pveh->ManualCtrlKey == 'S')
+	{
+		pveh->Manual_Velocity -= 0.2 * pveh->Max_Velocity;
+	}
+	else if(pveh->ManualCtrlKey == 'D')
+	{
+		pveh->Manual_Angle += 30;
+		if(pveh->Manual_Angle > 180) pveh->Manual_Angle -= 360;
+		IMU_UpdateSetAngle(&Mag,pveh->Manual_Angle);
+	}
+	else if(pveh->ManualCtrlKey == 'A')
+	{
+		pveh->Manual_Angle -= 30;
+		if(pveh->Manual_Angle < -180) pveh->Manual_Angle += 360;
+		IMU_UpdateSetAngle(&Mag,pveh->Manual_Angle);
+	}
+	if(pveh->Manual_Velocity > pveh->Max_Velocity) pveh->Manual_Velocity = pveh->Max_Velocity;
+	else if(pveh->Manual_Velocity < 0) pveh->Manual_Velocity = 0;
+	pveh->ManualCtrlKey = 0;
+}
+
+void	Veh_UpdateMaxVelocity(Vehicle *pveh, double MaxVelocity)
+{
+	pveh->Max_Velocity = MaxVelocity;
+}
+/* ----------------------- GPS function ---------------------------------------*/
 /** @brief  : Round value
 **  @agr    : input
 **  @retval : Return fix value
@@ -107,74 +194,18 @@ double fix(double value)
 	return result;
 }
 
-/** @brief  : Convert lat lon coordinate into UTM
-**  @agr    : input lat and lon values from GNGLL message GLONASS Lat Lon
-**  @retval : Result buffer x ,y
-**/
-void LatLonToUTM(double lattitude, double longitude, double *result)
-{
-	double la, lo, lat, lon, sa, sb, e2, e2cuadrada, c, Huso, S, deltaS, a, epsilon, nu, v, ta, a1, a2, j2, j4, j6, alfa, beta, gama, Bm, xx, yy;
-	la = lattitude;
-	lo = longitude;
-	sa = 6378137.00000;
-	sb = 6356752.314245;
-	e2 = pow(pow(sa,2) - pow(sb,2),0.5) / sb;
-	e2cuadrada = pow(e2,2);
-	c = pow(sa,2) / sb;
-	lat = la * (pi / 180);
-	lon = lo * (pi / 180);
-	Huso = fix((lo / 6) + 31);
-	S = ((Huso * 6) - 183);
-	deltaS = lon - (S * (pi / 180));
-	a = cos(lat) * sin(deltaS);
-	epsilon = 0.5 * log((1 + a) / (1 - a));
-	nu = atan(tan(lat) / cos(deltaS)) - lat;
-	v = (c / pow((1 + (e2cuadrada * pow(cos(lat),2))),0.5)) * 0.9996;
-	ta = (e2cuadrada / 2) * pow(epsilon,2) * pow(cos(lat),2);
-	a1 = sin(2 * lat);
-	a2 = a1 * pow(cos(lat),2);
-	j2 = lat + (a1 / 2);
-	j4 = ((3 * j2) + a2) / 4;
-	j6 = ((5 * j4) + (a2 * pow(cos(lat),2))) / 3;
-	alfa = ((double)3 / (double)4) * e2cuadrada;
-	beta = ((double)5 / (double)3) * pow(alfa,2);
-	gama = ((double)35 / (double)27) * pow(alfa,3);
-	Bm = 0.9996 * c * (lat - alfa * j2 + beta * j4 - gama * j6);
-	xx = epsilon * v * (1 + (ta / 3)) + 500000;
-	yy = nu * v * (1 + ta) + Bm;
-	if (yy < 0)
-	{
-		yy = 9999999 + yy;
-	}
-	result[0] = xx;
-	result[1] = yy;
-}
-
-/** @brief  : Convert lattitude and longtitude value into Degree
-**  @agr    : Lattitude value
-**  @retval : Degree value
-**/
-double LLToDegree(double LL)
-{
-	double degree, minute, temp;
-	degree = (int)(LL / 100);
-	temp = (double)(degree * 100);
-	minute = LL - temp;
-	minute = minute / 60;
-	return (degree + minute);
-}
 
 /** @brief  : Seperating each info of message by ','
 **  @agr    : input message, result buffer
 **  @retval : None
 **/
 
-void GetMessageInfo(char *inputmessage, char result[50][20])
+void GetMessageInfo(char *inputmessage, char result[20][30], char character)
 {
 	int col = 0, row = 0, index = 0;
 	while(inputmessage[index] != 0)
 	{
-		if(inputmessage[index] != ',')
+		if(inputmessage[index] != character)
 		{
 			result[row][col] = inputmessage[index];
 			col++;
@@ -201,6 +232,11 @@ double GetValueFromString(char *value)
 	{
 		index++;
 		sign = -1;
+	}
+	else if(value[0] == ' ')
+	{
+		index++;
+		sign = 1;
 	}
 	while(value[index] != 0)
 	{
@@ -246,19 +282,6 @@ double GetValueFromString(char *value)
 	return result;
 }
 
-/** @brief  : Check header is correct or not
-**  @agr    : Input header
-**  @retval : Return correct or not 
-**/
-Check_Status IsCorrectHeader(char *header)
-{
-	if(header[0] == '$' & header[1] == 'G' & header[2] == 'N' & header[3] == 'G' & header[4] == 'L' & header[5] == 'L')
-	{
-		return Check_OK;
-	}
-	else return Check_NOK;
-}
-
 /** @brief  : Convert value to char array
 **  @agr    : Input value, result buffer
 **  @retval : None 
@@ -279,20 +302,20 @@ uint8_t ToChar(double value, uint8_t *pBuffer)
 {
 	uint32_t BefD;
 	double AftD;
-	uint8_t buffer[20], index = 0, temp1, len, strleng = 0;
-	if(value < (double)0)
+	uint8_t buffer[20], index = 0, temp1, strleng = 0, len = 0;
+	if(value < 0.0)
 	{
 		value = -value;
 		pBuffer[0] = (uint8_t)'-';
-		strleng++;
 		index++;
+		strleng++;
 	}
 	BefD = (uint32_t)value;
 	AftD = value - (double)BefD;
 	if (BefD == 0) 
 	{
-		pBuffer[0] = (uint8_t)'0';
-		len = 1;
+		pBuffer[index] = (uint8_t)'0';
+		index++;
 		strleng++;
 	}
 	else
@@ -301,30 +324,28 @@ uint8_t ToChar(double value, uint8_t *pBuffer)
 		{
 			temp1 = BefD % 10;
 			BefD /= 10;
-			buffer[index] = temp1 + 48;
-			index++;
+			buffer[len] = temp1 + 48;
+			len++;
 		}
-		len = index;
-		strleng = index;
+		strleng = index + len;
 		// take the befD value
-		for (int i = 0; i < len; i++)
+		for (int i = 0; i < strleng; i++)
 		{
-			index--;
-			pBuffer[i] = buffer[index];
+			len--;
+			pBuffer[index + i] = buffer[len];
 		}
 	}
 	if(IsDouble(AftD))
 	{
-		pBuffer[len] = (uint8_t)'.';
-		len++;
+		pBuffer[strleng] = (uint8_t)'.';
 		strleng++;
 		for (int i = 0; i < 6; i++)
 		{
 			AftD *= 10;
-			pBuffer[len + i] = (uint8_t)AftD + 48;
+			pBuffer[strleng + i] = (uint8_t)AftD + 48;
 			AftD = AftD - (uint8_t)AftD;
-			strleng++;
 		}
+		strleng += 6;
 	}
 	return strleng;
 }
@@ -333,11 +354,139 @@ uint8_t ToChar(double value, uint8_t *pBuffer)
 **  @agr    : Input message
 **  @retval : None 
 **/
-Check_Status IsValidData(char *input)
+Check_Status IsValidData(char input)
 {
-	if(input[0] == 'A') return Check_OK;
-	else if(input[0] == 'V') return Check_NOK;
+	if(input == 'A') return Check_OK;
+	else if(input == 'V') return Check_NOK;
 	return Check_NOK;
+}
+
+/** @brief  : Readline function
+**  @agr    : input and output buffer
+**  @retval : Length of receive message
+**/
+int Readline(uint8_t *inputmessage, uint8_t *outputmessage)
+{
+	int i = 0, j = 0;
+	while(inputmessage[i] != 0)
+	{
+		if(((inputmessage[i] == 0x0D) && ((inputmessage[i + 1] == 0x0A))))
+		{
+			break;
+		}
+		else
+		{
+			outputmessage[j] = inputmessage[i];
+			j++;
+		}
+		i++;
+	}
+	return j;
+}
+
+/** @brief  : LRC calculate
+**  @agr    : Input string array and its lenght
+**  @retval : Result
+**/
+uint8_t LRCCalculate(uint8_t *pBuffer, int length)
+{
+	unsigned int result = 0;
+	for(int i = 0; i < length; i++)
+	{
+		result ^= pBuffer[i];
+	}
+	return result;
+}
+
+/** @brief  : Convert decimal value to hexadecimal
+**  @agr    : Input value
+**  @retval : Result
+**/
+uint8_t ToHex(uint8_t input)
+{
+	if(input < 10)
+		input += 48;
+	else
+		input += 55;
+	return input;
+}
+
+/** @brief  : Check sum and return OK or Not OK
+**  @agr    : Input message, 4 higher bits and 4 lower bits of byte
+**  @retval : Check status
+**/
+Check_Status IsCorrectMessage(uint8_t *inputmessage, int length, uint8_t byte1, uint8_t byte2)
+{
+	uint8_t CheckSum, c1, c2;
+	CheckSum = LRCCalculate(inputmessage,length);
+	c1 = (CheckSum & 0xF0) >> 4;
+	c2 = CheckSum & 0x0F;
+	c1 = ToHex(c1);
+	c2 = ToHex(c2);
+	if((c1 == byte1) && (c2 == byte2))
+		return Check_OK;
+	else
+		return Check_NOK;
+}
+
+/** @brief  : Compare 2 input string
+**  @agr    : Input message
+**  @retval : 1 - equal, 0 - not equal
+**/
+Check_Status StringHeaderCompare(char *s1, char *s2)
+{
+	for(int i = 0; i < 6; i++)
+	{
+		if(s1[i] != s2[i]) return Check_NOK;
+	}
+	return Check_OK;
+}
+
+/** @brief  : Get number of receive message
+**  @agr    : Input message
+**  @retval : None 
+**/
+int GetNbOfReceiveHeader(char *input)
+{
+	if(StringHeaderCompare(input,"$VEHCF"))
+		return 1;
+	else if(StringHeaderCompare(input,"$TSAMP"))
+		return 2;
+	else if(StringHeaderCompare(input,"$TSEND"))
+		return 3;
+	else if(StringHeaderCompare(input,"$IMUCF"))
+		return 4;
+	else if(StringHeaderCompare(input,"$SFRST"))
+		return 5;
+	else if(StringHeaderCompare(input,"$MACON"))
+		return 6;
+	else if(StringHeaderCompare(input,"$AUCON"))
+		return 7;
+	else if(StringHeaderCompare(input,"$VPLAN"))
+		return 8;
+	else if(StringHeaderCompare(input,"$FSAVE"))
+		return 9;
+	else return 0;
+}
+
+/** @brief  : Feed back message
+**  @agr    : Result and status
+**  @retval : lenght 
+**/
+int FeedBack(uint8_t *outputmessage, char status)
+{
+	int i = 0;
+	outputmessage[i++] 	= (uint8_t)'$';
+	outputmessage[i++]  = (uint8_t)'S';
+	outputmessage[i++]  = (uint8_t)'I';
+	outputmessage[i++]  = (uint8_t)'N';
+	outputmessage[i++]  = (uint8_t)'F';
+	outputmessage[i++]  = (uint8_t)'O';
+	outputmessage[i++]  = (uint8_t)',';
+	outputmessage[i++]  = (uint8_t)status;
+	outputmessage[i++]  = 0x0D;
+	outputmessage[i++]  = 0x0A;
+	return i;
 }
 
 /*-------------------- Stanley Function ------------------*/
@@ -352,20 +501,6 @@ double ToRPM(double vel)
 	return result;
 }
 
-/** @brief  : Calculate Path Angle
-**  @agr    : Pathx, pathy, result path theta
-**  @retval : None 
-**/
-void PathAngular(double *X, double *Y, double *result)
-{
-	int i = 0;
-	while(i < NbOfWP - 1)
-	{
-		result[i] = atan2(Y[i + 1] - Y[i], X[i + 1] - X[i]);
-		i++;
-	}
-	result[i] = 0;
-}
 
 /** @brief  : Pi to Pi
 **  @agr    : input angle
@@ -389,20 +524,136 @@ double Pi_To_Pi(double angle)
 	return result;
 }
 
+/** @brief  : Convert lat lon coordinate into UTM
+**  @agr    : input lat and lon values from GNGLL message GLONASS Lat Lon
+**  @retval : Result buffer x ,y
+**/
+void GPS_LatLonToUTM(GPS *pgps)
+{
+	double la, lo, lat, lon, sa, sb, e2, e2cuadrada, c, Huso, S, deltaS, a, epsilon, nu, v, ta, a1, a2, j2, j4, j6, alfa, beta, gama, Bm, xx, yy;
+	la = pgps->Latitude;
+	lo = pgps->Longitude;
+	sa = 6378137.00000;
+	sb = 6356752.314245;
+	e2 = pow(pow(sa,2) - pow(sb,2),0.5) / sb;
+	e2cuadrada = pow(e2,2);
+	c = pow(sa,2) / sb;
+	lat = la * (pi / 180);
+	lon = lo * (pi / 180);
+	Huso = fix((lo / 6) + 31);
+	S = ((Huso * 6) - 183);
+	deltaS = lon - (S * (pi / 180));
+	a = cos(lat) * sin(deltaS);
+	epsilon = 0.5 * log((1 + a) / (1 - a));
+	nu = atan(tan(lat) / cos(deltaS)) - lat;
+	v = (c / pow((1 + (e2cuadrada * pow(cos(lat),2))),0.5)) * 0.9996;
+	ta = (e2cuadrada / 2) * pow(epsilon,2) * pow(cos(lat),2);
+	a1 = sin(2 * lat);
+	a2 = a1 * pow(cos(lat),2);
+	j2 = lat + (a1 / 2);
+	j4 = ((3 * j2) + a2) / 4;
+	j6 = ((5 * j4) + (a2 * pow(cos(lat),2))) / 3;
+	alfa = ((double)3 / (double)4) * e2cuadrada;
+	beta = ((double)5 / (double)3) * pow(alfa,2);
+	gama = ((double)35 / (double)27) * pow(alfa,3);
+	Bm = 0.9996 * c * (lat - alfa * j2 + beta * j4 - gama * j6);
+	xx = epsilon * v * (1 + (ta / 3)) + 500000;
+	yy = nu * v * (1 + ta) + Bm;
+	if (yy < 0)
+	{
+		yy = 9999999 + yy;
+	}
+	pgps->CorX = xx;
+	pgps->CorY = yy;
+}
+
+/** @brief  : Convert lattitude and longtitude value into Degree
+**  @agr    : Lattitude value
+**  @retval : Degree value
+**/
+double GPS_LLToDegree(double LL)
+{
+	double degree, minute, temp;
+	degree = (int)(LL / 100);
+	temp = (double)(degree * 100);
+	minute = LL - temp;
+	minute = minute / 60;
+	return (degree + minute);
+}
+
+/** @brief  : Initial value for GPS functions
+**  @agr    : input
+**  @retval : Return fix value
+**/
+void GPS_ParametersInit(GPS *pgps)
+{
+	pgps->CorX = 0;
+	pgps->CorY = 0;
+	pgps->Latitude = 0;
+	pgps->Longitude = 0;
+	pgps->Robot_Velocity = 0;
+	pgps->NbOfWayPoints = 0;
+	pgps->Pre_CorX = 0;
+	pgps->Pre_CorY = 0;
+	pgps->Rx_Flag = false;
+}
+
+/** @brief  : Function get lat lon value from GNGLL message
+**  @agr    : String value received from message
+**  @retval : Value
+**/
+void GPS_GetLatFromString(GPS *pgps, char *inputmessage)
+{
+	double s1 = 0, s2 = 0;
+	int temp = 1000;
+	for(int i = 0; i < 4; i++)
+	{
+		s1 += (inputmessage[i] - 48) * temp;
+		temp /= 10;
+	}
+	temp = 10000;
+	for(int i = 5; i < 10; i++)
+	{
+		s2 += (inputmessage[i] - 48) * temp;
+		temp /= 10;
+	}
+	s2 /= 10000;
+	pgps->Latitude = GPS_LLToDegree(s1 + s2);
+}
+
+/** @brief  : Function get lat lon value from GNGLL message
+**  @agr    : String value received from message
+**  @retval : Value
+**/
+void GPS_GetLonFromString(GPS *pgps, char *inputmessage)
+{
+	double s1 = 0, s2 = 0;
+	int temp = 10000;
+	for(int i = 0; i < 5; i++)
+	{
+		s1 += (inputmessage[i] - 48) * temp;
+		s2 += (inputmessage[i + 5] - 48) * temp;
+		temp /= 10;
+	}
+	s2 /= 10000;
+	pgps->Longitude = GPS_LLToDegree(s1 + s2);
+}
+
 /** @brief  : Controller using Stanley algorithm
 **  @agr    : current pose of the robot and Pathx, Pathy
 **  @retval : Steering angle
 **/
-double StanleyControl(double x, double y, double theta, double *Px, double *Py, double *PYaw, double v)
+void GPS_StanleyControl(GPS *pgps)
 {                   /*   Current pose of the robot   */ /*  Path coordinate  */ /*  ThetaP  */
 	double dmin = 0,dx,dy,d;
 	int 	 index = 0;
-	double efa, thetad, thetae, delta, tyaw, goal_radius;
+	double efa, thetad, thetae, tyaw, goal_radius;
+	pgps->Angle = &Mag;
 	//Searching the nearest point
-	for(int i = 0; i < NbOfWP; i++) 
+	for(int i = 0; i < pgps->NbOfWayPoints; i++) 
 	{
-		dx = x - Px[i];
-		dy = y - Py[i];
+		dx = pgps->CorX - pgps->Path_X[i];
+		dy = pgps->CorY - pgps->Path_Y[i];
 		d  = sqrt(pow(dx,2) + pow(dy,2));
 		if(i == 0)
 		{
@@ -419,20 +670,20 @@ double StanleyControl(double x, double y, double theta, double *Px, double *Py, 
 		}
 	}
 	efa  = dmin;
-	tyaw = Pi_To_Pi(atan2(y - Py[index],x - Px[index]) - theta);
+	tyaw = Pi_To_Pi(atan2(pgps->CorY - pgps->Path_Y[index],pgps->CorX - pgps->Path_X[index]) - pgps->Angle->Angle);
 	if(tyaw >= 0)
 		efa = -efa;
-	goal_radius = sqrt(pow(x - Px[NbOfWP - 1],2) + pow(y - Py[NbOfWP - 1],2));
+	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
 	if(goal_radius <= 3)
-		delta = 0;
-	thetae = Pi_To_Pi(PYaw[index] - theta);
-	thetad = atan2(K * efa,v);
-	delta  = thetae + thetad;
-	return delta;
+		pgps->Delta_Angle = 0;
+	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - pgps->Angle->Angle);
+	thetad = atan2(K * efa,pgps->Robot_Velocity);
+	pgps->Delta_Angle  = thetae + thetad;
 }
 
 /*-------------------- Fuzzy control -----------------------*/
 /* Variables of fuzzy control block */
+
 /** @brief  : Find maximum number
 **  @agr    : 2 input values
 **  @retval : Output maximum value
@@ -459,209 +710,427 @@ double Fuzzy_Max(double *input,int len)
 	return max;
 }
 
-/** @brief  : Input 1 - error
-**  @agr    : Input value, name of the symbols value
-**  @retval : Output value
+/** @brief  : Trapf function
+**  @agr    : 4 parameters (left to right)
+**  @retval : Value relates to x
 **/
-double Input1(double x, char c[2])
+double Trapf(trapf *ptrapf, double x)
 {
 	double result;
-	if((c[0] == 'N') && (c[1] == 'B'))
-	{
-		if(x < In1_NB.h3)
-			result = 1;
-		else if(x < In1_NB.h4)
-		{
-			result = (In1_NB.h4 - x) / (In1_NB.h4 - In1_NB.h3);
-		}
-		else result = 0;
-	}
-	else if((c[0] == 'N') && (c[1] == 'S'))
-	{
-		if(x < In1_NS.a1)
-			result = 0;
-		else if(x < In1_NS.a2)
-		{
-			result = (x - In1_NS.a1) / (In1_NS.a2 - In1_NS.a1);
-		}
-		else if(x < In1_NS.a3)
-		{
-			result = (In1_NS.a3 - x) / (In1_NS.a3 - In1_NS.a2);
-		}
-		else result = 0;
-	}
-	else if((c[0] == 'Z') && (c[1] == 'E'))
-	{
-		if(x < In1_ZE.a1)
-			result = 0;
-		else if(x < In1_ZE.a2)
-		{
-			result = (x - In1_ZE.a1) / (In1_ZE.a2 - In1_ZE.a1);
-		}
-		else if(x < In1_ZE.a3)
-		{
-			result = (In1_ZE.a3 - x) / (In1_ZE.a3 - In1_ZE.a2);
-		}
-		else result = 0;
-	}
-	else if((c[0] == 'P') && (c[1] == 'S'))
-	{
-		if(x < In1_PS.a1)
-			result = 0;
-		else if(x < In1_PS.a2)
-		{
-			result = (x - In1_PS.a1) / (In1_PS.a2 - In1_PS.a1);
-		}
-		else if(x < In1_PS.a3)
-		{
-			result = (In1_PS.a3 - x) / (In1_PS.a3 - In1_PS.a2);
-		}
-		else result = 0;
-	}
-	else if((c[0] == 'P') && (c[1] == 'B'))
-	{
-		if(x < In1_PB.h1)
-			result = 0;
-		else if(x < In1_PB.h2)
-		{
-			result = (x - In1_PB.h1) / (In1_PB.h2 - In1_PB.h1);
-		}
-		else result = 1;
-	}
-	else result = 0;
-	return result;
-}
-/** @brief  : Input 2 - velocity error
-**  @agr    : Input value, name of the value
-**  @retval : Output value
-**/
-double Input2(double x, char c[2])
-{
-	double result;
-	if((c[0] == 'N') && (c[1] == 'E'))
-	{
-		if(x < In2_NE.h3)
-			result = 1;
-		else if(x < In2_NE.h4)
-		{
-			result = (In2_NE.h4 - x) / (In2_NE.h4 - In2_NE.h3);
-		}
-		else result = 0;
-	}
-	else if((c[0] == 'Z') && (c[1] == 'E'))
-	{
-		if(x < In2_ZE.a1)
-			result = 0;
-		else if(x < In2_ZE.a2)
-		{
-			result = (x - In2_ZE.a1) / (In2_ZE.a2 - In2_ZE.a1);
-		}
-		else if(x < In2_ZE.a3)
-		{
-			result = (In2_ZE.a3 - x) / (In2_ZE.a3 - In2_ZE.a2);
-		}
-		else result = 0;
-	}
-	else if((c[0] == 'P') && (c[1] == 'O'))
-	{
-		if(x < In2_PO.h1) 
-			result = 0;
-		else if(x < In2_PO.h2)
-		{
-			result = (x - In2_PO.h1) / (In2_PO.h2 - In2_PO.h1);
-		}
-		else result = 1;
-	}
+	if(x < ptrapf->h1) result = 0;
+	else if(x < ptrapf->h2) result = (x - ptrapf->h1) / (ptrapf->h2 - ptrapf->h1);
+	else if(x < ptrapf->h3) result = 1;
+	else if(x < ptrapf->h4) result = (ptrapf->h4 - x) / (ptrapf->h4 - ptrapf->h3);
 	else result = 0;
 	return result;
 }
 
-/** @brief  : Defuzzification Max Min
+/** @brief  : Trimf function
+**  @agr    : 3 parameters (left to right)
+**  @retval : Value relates to x
+**/
+double Trimf(trimf *ptrimf, double x)
+{
+	double result;
+	if(x < ptrimf->a1) result = 0;
+	else if(x < ptrimf->a2) result = (x - ptrimf->a2) / (ptrimf->a2 - ptrimf->a1);
+	else if(x < ptrimf->a3) result = (ptrimf->a3 - x) / (ptrimf->a3 - ptrimf->a2);
+	else result = 0;
+	return result;
+}
+
+/** @brief  : Update Paramter for Trimf function
+**  @agr    : 3 parameters (left to right)
+**  @retval : Value relates to x
+**/
+void	Trimf_Update(trimf *ptrimf, double a1, double a2, double a3)
+{
+	ptrimf->a1 = a1;
+	ptrimf->a2 = a2;
+	ptrimf->a3 = a3;
+}
+
+/** @brief  : Update Paramerters for trapf function
+**  @agr    : 3 parameters (left to right)
+**  @retval : Value relates to x
+**/
+void	Trapf_Update(trapf *ptrapf, double a1, double a2, double a3, double a4)
+{
+	ptrapf->h1 = a1;
+	ptrapf->h2 = a2;
+	ptrapf->h3 = a3;
+	ptrapf->h4 = a4;
+}
+
+/** @brief  : Fuzzy init parameter procedure
+**  @agr    : 3 parameters (left to right)
+**  @retval : Value relates to x
+**/
+void	Fuzzy_ParametersInit(void)
+{
+	/*   Input 1 (e = Set_theta - theta)  */
+		// NB : -2 - -0.17
+		Trapf_Update(&In1_NB,-2,-1,-0.22,-0.17);
+		// NS : 0.15 - 0.45
+		Trimf_Update(&In1_NS,-0.22,-0.11,-0.044);
+		// ZE : 0 - 0.2
+		Trimf_Update(&In1_ZE,-0.056,0,0.056);
+		// PS : 0.15 - 0.45
+		Trimf_Update(&In1_PS,0.044,0.11,0.22);
+		// PB : 0.4 - 1
+		Trapf_Update(&In1_PB,0.17,0.22,1,2);
+		/* Input 2 (edot = Set_thetadot - thetadot) */
+		// NE : 0.3 - 1
+		Trapf_Update(&In2_NE,-2,-1,-0.4,-0.3);
+		// ZE : 0 - 0.4
+		Trimf_Update(&In2_ZE,-0.4,0,0.4);
+		// PO : 0.3 - 1
+		Trapf_Update(&In2_PO,0.3,0.4,1,2);
+		/* Output value */
+		NB = -0.9;
+		NM = -0.75;
+		NS = -0.5;
+		ZE = 0;
+		PS = 0.5;
+		PM = 0.75;
+		PB = 0.9;
+}
+
+void	SelectFuzzyOutput(double vel)
+{
+	/*----------Fuzzy parameter init ------------------*/
+	if (vel < ToRPM(0.3))
+	{
+		/*   Input 1 (e = Set_theta - theta)  */
+		// NB : 0.4 - 1
+		In1_NB.h1 = -2;
+		In1_NB.h2 = -1;
+		In1_NB.h3 = -0.22;
+		In1_NB.h4 = -0.17;
+		// NS : 0.15 - 0.45
+		In1_NS.a1 = -0.22;
+		In1_NS.a2 = -0.11;
+		In1_NS.a3 = -0.044;
+		// ZE : 0 - 0.2
+		In1_ZE.a1 = -0.056;
+		In1_ZE.a2 = 0;
+		In1_ZE.a3 = 0.056;
+		// PS : 0.15 - 0.45
+		In1_PS.a1 = 0.044;
+		In1_PS.a2 = 0.11;
+		In1_PS.a3 = 0.22;
+		// PB : 0.4 - 1
+		In1_PB.h1 = 0.17;
+		In1_PB.h2 = 0.22;
+		In1_PB.h3 = 1;
+		In1_PB.h4 = 2;
+		/* Input 2 (edot = Set_thetadot - thetadot) */
+		// NE : 0.3 - 1
+		In2_NE.h1 = -2;
+		In2_NE.h2 = -1;
+		In2_NE.h3 = -0.4;
+		In2_NE.h4 = -0.3;
+		// ZE : 0 - 0.4
+		In2_ZE.a1 = -0.4;
+		In2_ZE.a2 = 0;
+		In2_ZE.a3 = 0.4;
+		// PO : 0.3 - 1
+		In2_PO.h1 = 0.3;
+		In2_PO.h2 = 0.4;
+		In2_PO.h3 = 1;
+		In2_PO.h4 = 2;
+		/* Output value */
+		NB = -0.9;
+		NM = -0.75;
+		NS = -0.5;
+		ZE = 0;
+		PS = 0.5;
+		PM = 0.75;
+		PB = 0.9;
+	}
+	else
+	{
+		/*   Input 1 (e = Set_theta - theta)  */
+		// NB : 0.4 - 1
+		In1_NB.h1 = -2;
+		In1_NB.h2 = -1;
+		In1_NB.h3 = -0.45;
+		In1_NB.h4 = -0.4;
+		// NS : 0.15 - 0.45
+		In1_NS.a1 = -0.45;
+		In1_NS.a2 = -0.2;
+		In1_NS.a3 = -0.15;
+		// ZE : 0 - 0.2
+		In1_ZE.a1 = -0.2;
+		In2_ZE.a2 = 0;
+		In2_ZE.a3 = 0.2;
+		// PS : 0.15 - 0.45
+		In1_PS.a1 = 0.15;
+		In1_PS.a2 = 0.2;
+		In1_PS.a3 = 0.45;
+		// PB : 0.4 - 1
+		In1_PB.h1 = 0.4;
+		In1_PB.h2 = 0.45;
+		In1_PB.h3 = 1;
+		In1_PB.h4 = 2;
+		/* Input 2 (edot = Set_thetadot - thetadot) */
+		// NE : 0.3 - 1
+		In2_NE.h1 = -2;
+		In2_NE.h2 = -1;
+		In2_NE.h3 = -0.4;
+		In2_NE.h4 = -0.3;
+		// ZE : 0 - 0.4
+		In2_ZE.a1 = -0.4;
+		In2_ZE.a2 = 0;
+		In2_ZE.a3 = 0.4;
+		// PO : 0.3 - 1
+		In2_PO.h1 = 0.3;
+		In2_PO.h2 = 0.4;
+		In2_PO.h3 = 1;
+		In2_PO.h4 = 2;
+		/* Output value */
+		NB = -0.75;
+		NM = -0.4;
+		NS = -0.175;
+		ZE = 0;
+		PS = 0.175;
+		PM = 0.4;
+		PB = 0.75;
+	}
+}
+
+/** @brief  : Defuzzification Max Min sugeno
 **  @agr    : 2 input value
 **  @retval : Output value
 **/
 
-double Defuzzification_Max_Min(double in1, double in2)
+void	Defuzzification_Max_Min(IMU *pimu, double in1, double in2)
 {
 	double pBeta[5],num = 0, den = 0, temp;
-	double result;
 	//NB and NE is NB
-	pBeta[0] = Fuzzy_Min(Input1(in1,"NB"),Input2(in2,"NE"));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_NB,in1), Trapf(&In2_NE,in2));
 	num = NB * pBeta[0];
 	den = pBeta[0];
 	//NS and NE is NM
 	//NB and ZE is NM
-	pBeta[0] = Fuzzy_Min(Input1(in1,"NS"),Input2(in2,"NE"));
-	pBeta[1] = Fuzzy_Min(Input1(in1,"NB"),Input2(in2,"ZE"));
+	pBeta[0] = Fuzzy_Min(Trimf(&In1_NS,in1),Trapf(&In2_NE,in2));
+	pBeta[1] = Fuzzy_Min(Trapf(&In1_NB,in1),Trimf(&In2_ZE,in2));
 	temp = Fuzzy_Max(pBeta,2);
 	num += NM * temp;
 	den += temp;
 	//ZE and NE is NS
 	//NS and ZE is NS
 	//NB and PO is NS
-	pBeta[0] = Fuzzy_Min(Input1(in1,"ZE"),Input2(in2,"NE"));
-	pBeta[1] = Fuzzy_Min(Input1(in1,"NS"),Input2(in2,"ZE"));
-	pBeta[2] = Fuzzy_Min(Input1(in1,"NB"),Input2(in2,"PO"));
+	pBeta[0] = Fuzzy_Min(Trimf(&In1_ZE,in1),Trapf(&In2_NE,in2));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_NS,in1),Trimf(&In2_ZE,in2));
+	pBeta[2] = Fuzzy_Min(Trapf(&In1_NB,in1),Trapf(&In2_PO,in2));
 	temp = Fuzzy_Max(pBeta,3);
 	num += NS * temp;
 	den += temp;
 	//PS and NE is ZE
 	//ZE and ZE is ZE
 	//NS and PO is ZE
-	pBeta[0] = Fuzzy_Min(Input1(in1,"PS"),Input2(in2,"NE"));
-	pBeta[1] = Fuzzy_Min(Input1(in1,"ZE"),Input2(in2,"ZE"));
-	pBeta[2] = Fuzzy_Min(Input1(in1,"NS"),Input2(in2,"PO"));
+	pBeta[0] = Fuzzy_Min(Trimf(&In1_PS,in1),Trapf(&In2_NE,in2));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_ZE,in1),Trimf(&In2_ZE,in2));
+	pBeta[2] = Fuzzy_Min(Trimf(&In1_NS,in1),Trapf(&In2_PO,in2));
 	temp = Fuzzy_Max(pBeta,3);
 	num += ZE * temp;
 	den += temp;
 	//PB and NE is PS
 	//PS and ZE is PS
 	//ZE and PO is PS
-	pBeta[0] = Fuzzy_Min(Input1(in1,"PB"),Input2(in2,"NE"));
-	pBeta[1] = Fuzzy_Min(Input1(in1,"PS"),Input2(in2,"ZE"));
-	pBeta[2] = Fuzzy_Min(Input1(in1,"ZE"),Input2(in2,"PO"));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,in1),Trapf(&In2_NE,in2));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_PS,in1),Trimf(&In2_ZE,in2));
+	pBeta[2] = Fuzzy_Min(Trimf(&In1_ZE,in1),Trapf(&In2_PO,in2));
 	temp = Fuzzy_Max(pBeta,3);
 	num += PS * temp;
 	den += temp;
 	//PB and ZE is PM
 	//PS and PO is PM
-	pBeta[0] = Fuzzy_Min(Input1(in1,"PB"),Input2(in2,"ZE"));
-	pBeta[1] = Fuzzy_Min(Input1(in1,"PS"),Input2(in2,"PO"));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,in1),Trimf(&In2_ZE,in2));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_PS,in1),Trapf(&In2_PO,in2));
 	temp = Fuzzy_Max(pBeta,2);
 	num += PM * temp;
 	den += temp;
 	//PB and PO is PB
-	pBeta[0] = Fuzzy_Min(Input1(in1,"PB"),Input2(in2,"PO"));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,in1),Trapf(&In2_PO,in2));
 	num += PB * pBeta[0];
 	den += pBeta[0];
-	result = num / den;
-	return result;
+	if(den == 0) pimu->Fuzzy_Out = 0;
+	else
+	{
+		pimu->Fuzzy_Out = num / den;
+	}
 }
 
-/** @brief  : Defuzzification Max Prod
-**  @agr    : Input value, name of the symbols value
+
+/*------------------------ Flash read/write function ------------------*/
+
+/*------------------------ IMU functions ------------------*/
+/** @brief  : Get data from IMU message
+**  @agr    : inputmessage, val
 **  @retval : Output value
 **/
-double Defuzzification_Max_Prod(void)
+void	IMU_ParametesInit(IMU *pimu)
 {
-	double result;
+	pimu->Pre_Angle = 0;
+	pimu->Set_Angle = 0;
+	pimu->Angle = 0;
+	pimu->Fuzzy_Out = 0;
+	pimu->First_RxFlag = false;
+}
+
+/** @brief  : Update Set angle
+**  @agr    : IMU and Angle
+**  @retval : none
+**/
+void	IMU_UpdateSetAngle(IMU *pimu, double Angle)
+{
+	pimu->Set_Angle = pimu->Angle + Angle;
+}
+
+/** @brief  : Update previous angle
+**  @agr    : IMU
+**  @retval : none
+**/
+void	IMU_UpdatePreAngle(IMU *pimu)
+{
+	pimu->Pre_Angle = pimu->Angle;
+}
+
+/** @brief  : Update Angle
+**  @agr    : IMU and Angle
+**  @retval : none
+**/
+void	IMU_UpdateAngle(IMU *pimu, double Angle)
+{
+	pimu->Angle = Angle;
+}
+
+/** @brief  : Get data from IMU message
+**  @agr    : inputmessage, val
+**  @retval : Output value
+**/
+double IMU_GetValue(uint8_t *inputmessage, int Val)
+{
+	double result = 0;
+	int i = 1, temp = 100000;
+	uint8_t TempBuffer[6][10];
+	for(int row = 0; row < 6; row++)
+	{
+		for(int col = 0; col < 7; col++)
+		{
+			TempBuffer[row][col] = inputmessage[i];
+			i++;
+		}
+		i++;
+	}
+	for(int j = 1; j < 7; j++)
+	{
+		result += (TempBuffer[Val - 1][j] - 48) * temp;
+		temp /= 10;
+	}
+	result /= 1000;
+	if(TempBuffer[Val - 1][0] == (uint8_t)'-')
+	{
+		result = -result;
+	}
 	return result;
 }
 
+/** @brief  : Copy IMU message to TX buffer 
+**  @agr    : input and output message
+**  @retval : Length
+**/
+int IMU_GetCommandMessage(char *inputmessage, uint8_t *outputmessage)
+{
+	int i = 0;
+	while(inputmessage[i] != 0)
+	{
+		outputmessage[i] = (uint8_t)inputmessage[i];
+		i++;
+	}
+	outputmessage[i++] = 0x0D;
+	outputmessage[i++] = 0x0A;
+	return i;
+}
 
 
+/*---------------- Read / Write Flash Memory Functions -----------------*/
+/** @brief  : Convert 4 bytes (in char) to a Word data in order to save in flash memory
+**  @agr    : Input array of bytes data
+**  @retval : Number of 32 bits address
+**/
+int Convert4BytesToWordData(uint8_t *pInput, uint32_t *pOutBuffer, int InputLength)
+{
+	int length = 0, h = 0;
+	if((InputLength % 4) != 0)
+		length = InputLength / 4 + 1;
+	else
+		length /= 4;
+	for(int i = 0; i < length; i++)
+	{
+		for(int j = 3; j >= 0; j--)
+		{
+			pOutBuffer[i] += pInput[h] << (8 * j);
+			h++;
+		}
+	}
+	return length;
+}
 
+/** @brief  : Erase sector flash memory
+**  @agr    : None
+**  @retval : None
+**/
+void EraseMemory(uint32_t Flash_Sector)
+{
+	FLASH_Unlock();
+	FLASH_EraseSector(Flash_Sector,FLASH_ProgramType_Word);
+	FLASH_Lock();
+}
 
+/** @brief  : Write word data to Flash memory
+**  @agr    : Flash_Sector, Sector_BaseAddr and input word data pointer
+**  @retval : None
+**/
+void WriteToFlash(uint32_t Flash_Sector, uint32_t Sector_BaseAddr, uint8_t *inputmessage, int length)
+{
+	uint32_t pInput[50] = {0};
+	pInput[0] = Convert4BytesToWordData(inputmessage,&pInput[1],length);
+	FLASH_Unlock();
+	FLASH_ProgramWord(Sector_BaseAddr,pInput[0]);
+	Sector_BaseAddr += 4;
+	for(int i = 0; i < pInput[0]; i++)
+	{
+		FLASH_ProgramWord(Sector_BaseAddr,pInput[i + 1]);
+		Sector_BaseAddr += 4;
+	}
+	FLASH_Lock();
+}
 
-
-
-
-
-
-
-
-
-
+/** @brief  : Read from flash memory
+**  @agr    : input and output message
+**  @retval : None
+**/
+void ReadFromFlash(uint32_t Sector_BaseAddr, uint8_t *pOutBuffer)
+{
+	int i = 0;
+	uint32_t mask = 0xFF000000;
+	int length = (int)(*(uint32_t*)Sector_BaseAddr);
+	Sector_BaseAddr += 4;
+	for(int count = 0; count < length; count++)
+	{
+		for(int j = 3; j >= 0; j--)
+		{
+			pOutBuffer[i] = (uint8_t)(((*(uint32_t*)Sector_BaseAddr) & mask) >> (8 * j));
+			mask >>= 8;
+			i++;
+		}
+		mask = 0xFF000000;
+		Sector_BaseAddr += 4;
+	}
+}
 
 
 

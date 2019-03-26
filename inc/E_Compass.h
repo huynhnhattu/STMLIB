@@ -24,13 +24,14 @@ discovery board.
 #define 			LSM303DLHC_MR_REG_M											 0x02
 #define 			LSM303DLHC_Gain_1												 0x20
 #define 			Sensor_TimeOut										 			 20000
-/* ---------- Define for Magnetic sensor 3 axis  ----------------------*/
+/* ---------- Define for SRF05                   ----------------------*/
 
 /* Define types */
 typedef enum{
 	Not_OK = 0,
 	OK,
 }CheckEVStatus;
+
 /* Export variables */
 
 /* Export functions */
@@ -45,8 +46,10 @@ void 					Acc_AngleCalculate(double ax, double ay, double az, double *result);
 void 					Mag_Calibration(double magX, double macY, double macZ, double *offset);
 CheckEVStatus	Read3AxisMagnetometer(double *pBuffer);
 double 				GetAngle(void);
+double 				ScaleAngle(double D);
 char*					CalculateDirection(double Angle);
-
+double 				GetAngle_LSM303DLHC(void);
+/* Thay Hao Sensor */
 
 
 

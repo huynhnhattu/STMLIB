@@ -49,8 +49,10 @@ void M1_Backward(double duty);
 void M2_Forward(double duty);
 void M2_Backward(double duty);
 void Stop_Motor(void);
-void Robot_Forward(double duty_left, double duty_right);
-void Robot_Backward(double duty_left, double duty_right);
+void Robot_Forward(double duty_right, double duty_left);
+void Robot_Backward(double duty_right, double duty_left);
+void Robot_Spin_ClockWise(double duty_right, double duty_left);
+void Robot_Spin_AntiClockWise(double duty_right, double duty_left);
 void Encoder_Config(void);
 
 

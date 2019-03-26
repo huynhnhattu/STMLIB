@@ -1,5 +1,6 @@
 /* Module interract with E compass sensor LSM303DLHC */
 #include "E_Compass.h"
+/*-----Variables-------------------*/
 GPIO_InitTypeDef 				Acc_GPIO_Struct;
 I2C_InitTypeDef					Acc_I2C_Struct;
 /* ------- I2C configuration (datasheet about connecting stm32 vs peripherals*/
@@ -298,7 +299,32 @@ double GetAngle(void)
 	else result = 0;
 	return result;
 }
-	
+
+double ScaleAngle(double D)
+{
+	double result;
+	// angle : -180 - 0 - 180
+	if(D > 180)
+		result = D - 360;
+	else
+		result = D;
+	return result;
+}
+
+double GetAngle_LSM303DLHC(void)
+{
+	double Phi, Gz2, Theta, By2, Bz2, Bx3, Yaw, Mxzy[3], Axyz[3];
+	Read3AxisAccelerometer(Axyz);
+	Read3AxisMagnetometer(Mxzy);
+	Phi = atan2(Axyz[1], Axyz[2]);
+	Gz2 = Axyz[1] * sin(Phi) + Axyz[2] * cos(Phi);
+	Theta = atan(-Axyz[0] / Gz2);
+	By2 = Mxzy[1] * sin(Phi) - Mxzy[2] * cos(Phi);
+	Bz2 = Mxzy[2] * sin(Phi) + Mxzy[1] * cos(Phi);
+	Bx3 = Mxzy[0] * cos(Theta) + Bz2 * sin(Theta);
+	Yaw = (atan2(By2,Bx3)*180)/3.14159;
+	return Yaw;
+}
 char* CalculateDirection(double Angle)
 {
 	char *c;
@@ -344,6 +370,8 @@ char* CalculateDirection(double Angle)
 	}
   return c;
 }
+/*-------------- ECompass IC IMU (Shield protection unit) --------------------*/
+
 /*--------------ECompass sensor Init-----------------*/
 void ECompass_Config()
 {
@@ -354,7 +382,15 @@ void ECompass_Config()
 	WriteToSensor('M',LSM303DLHC_MR_REG_M,0x00);
 }
 
-
+/*-------------- SRF05 ----------------*/
+/** @brief  : Defuzzification Max Prod sugeno
+**  @agr    : Input value, name of the symbols value
+**  @retval : Output value
+**/
+void SRF05_Config()
+{
+	
+}
 
 
 
