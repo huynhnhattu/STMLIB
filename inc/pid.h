@@ -25,5 +25,6 @@ typedef struct pid{
 
 /* Export functions */
 void	PID_ParameteresInit(pid *ppid);
-void	PID_Compute(pid *ppid);
-
+void	PID_Compute(pid *ppid, double *Current, double *Set, double *SampleTime);
+void	PID_UpdateParameters(pid *ppid, double Kp, double Ki, double Kd);
+void	PID_UpdateOutputSaturation(pid *ppid, double Omax, double Omin);

@@ -95,6 +95,39 @@ void	PID_UpdateEnc(DCMotor *ipid, uint16_t PulseCount)
 	ipid->Enc = PulseCount;
 }
 
+/** @brief  : PID reset encoder
+**	@agr    : void
+**	@retval : None
+**/
+void	PID_ResetEncoder(DCMotor *ipid)
+{
+	ipid->PreEnc = ipid->Enc;
+	ipid->OverFlow = 1;
+}
+
+/** @brief  : PID Save parameters to interflash memory
+**	@agr    : void
+**	@retval : None
+**/
+void	PID_SavePIDParaToFlash(FlashMemory *pflash, DCMotor *M1, DCMotor *M2)
+{
+	pflash->Length += ToChar(M1->Kp,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
+	pflash->Length += ToChar(M1->Ki,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
+	pflash->Length += ToChar(M1->Kd,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
+	pflash->Length += ToChar(M2->Kp,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
+	pflash->Length += ToChar(M2->Ki,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
+	pflash->Length += ToChar(M2->Kd,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->WriteInBuffer[pflash->Length++] = 0x0D;
+	pflash->WriteInBuffer[pflash->Length++] = 0x0A;
+	WriteToFlash(pflash,FLASH_Sector_7,FLASH_PIDPara_BaseAddr);
+	pflash->Length = 0;
+}
+
 /** @brief  : Convert rad to degree
 **  @agr    : input rad value
 **  @retval : degree value
@@ -145,7 +178,7 @@ void	Veh_ParametersInit(Vehicle *pveh)
 	pveh->ManualCtrlKey = 0;
 	pveh->Manual_Angle = 0;
 	pveh->Manual_Velocity = 0;
-	pveh->Mode = 4;
+	pveh->Mode = KeyBoard_Mode;
 	pveh->LengthOfCommands = 0;
 }
 
@@ -163,13 +196,13 @@ void	Veh_UpdateVehicleFromKey(Vehicle *pveh)
 	{
 		pveh->Manual_Angle += 30;
 		if(pveh->Manual_Angle > 180) pveh->Manual_Angle -= 360;
-		IMU_UpdateSetAngle(&Mag,pveh->Manual_Angle);
+		IMU_UpdateSetAngle(&Mag,&pveh->Manual_Angle);
 	}
 	else if(pveh->ManualCtrlKey == 'A')
 	{
 		pveh->Manual_Angle -= 30;
 		if(pveh->Manual_Angle < -180) pveh->Manual_Angle += 360;
-		IMU_UpdateSetAngle(&Mag,pveh->Manual_Angle);
+		IMU_UpdateSetAngle(&Mag,&pveh->Manual_Angle);
 	}
 	if(pveh->Manual_Velocity > pveh->Max_Velocity) pveh->Manual_Velocity = pveh->Max_Velocity;
 	else if(pveh->Manual_Velocity < 0) pveh->Manual_Velocity = 0;
@@ -199,11 +232,17 @@ double fix(double value)
 **  @agr    : input message, result buffer
 **  @retval : None
 **/
-
-void GetMessageInfo(char *inputmessage, char result[20][30], char character)
+void GetMessageInfo(char *inputmessage, char result[50][30], char character)
 {
 	int col = 0, row = 0, index = 0;
-	while(inputmessage[index] != 0)
+	for(int i = 0; i < 50; i++)
+	{
+		for(int j = 0; j < 30; j++)
+		{
+			result[i][j] = 0;
+		}
+	}
+	while((inputmessage[index] != 0x0D) && (inputmessage[index + 1] != 0x0A) && (inputmessage[index] != 0))
 	{
 		if(inputmessage[index] != character)
 		{
@@ -446,27 +485,29 @@ Check_Status StringHeaderCompare(char *s1, char *s2)
 **  @agr    : Input message
 **  @retval : None 
 **/
-int GetNbOfReceiveHeader(char *input)
+Command_State	GetNbOfReceiveHeader(char *input)
 {
 	if(StringHeaderCompare(input,"$VEHCF"))
-		return 1;
+		return Vehicle_Config;
 	else if(StringHeaderCompare(input,"$TSAMP"))
-		return 2;
+		return Sample_Time;
 	else if(StringHeaderCompare(input,"$TSEND"))
-		return 3;
+		return Send_Time;
 	else if(StringHeaderCompare(input,"$IMUCF"))
-		return 4;
+		return IMU_Config;
 	else if(StringHeaderCompare(input,"$SFRST"))
-		return 5;
+		return Soft_Reset;
 	else if(StringHeaderCompare(input,"$MACON"))
-		return 6;
+		return Manual_Config;
 	else if(StringHeaderCompare(input,"$AUCON"))
-		return 7;
+		return Auto_Config;
 	else if(StringHeaderCompare(input,"$VPLAN"))
-		return 8;
+		return Path_Plan;
 	else if(StringHeaderCompare(input,"$FSAVE"))
-		return 9;
-	else return 0;
+		return Flash_Save;
+	else if(StringHeaderCompare(input,"KCTRL"))
+		return KeyBoard_Control;
+	else return None;
 }
 
 /** @brief  : Feed back message
@@ -596,6 +637,54 @@ void GPS_ParametersInit(GPS *pgps)
 	pgps->Pre_CorX = 0;
 	pgps->Pre_CorY = 0;
 	pgps->Rx_Flag = false;
+}
+
+/** @brief  : GPS updates path yaw 
+**  @agr    : GPS
+**  @retval : none
+**/
+void	GPS_UpdatePathYaw(GPS *pgps)
+{
+	for(int i = 0; i < pgps->NbOfWayPoints; i++)
+	{
+		pgps->Path_Yaw[i] = atan2(pgps->Path_Y[i + 1] - pgps->Path_Y[i],pgps->Path_X[i + 1] - pgps->Path_X[i]);
+	}
+	pgps->Path_Yaw[pgps->NbOfWayPoints - 1] = 0;
+}
+
+/** @brief  : GPS updates path coordinate from PC format message includes: pathx, pathy and pathyaw
+**  @agr    : GPS and inputmessage
+**  @retval : none
+**/
+void	GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage)
+{
+	char Temp_Message[50][30] = {0};
+	GetMessageInfo((char*)inputmessage,Temp_Message,',');
+	pgps->NbOfWayPoints = GetValueFromString(&Temp_Message[1][0]);
+	for(int i = 0; i < pgps->NbOfWayPoints; i++)
+	{
+		pgps->Latitude 			= GetValueFromString(&Temp_Message[i * 2 + 2][0]);
+		pgps->Longitude			= GetValueFromString(&Temp_Message[i * 2 + 3][0]);
+		GPS_LatLonToUTM(pgps);
+		pgps->Path_X[i]			= pgps->CorX;
+		pgps->Path_Y[i]			= pgps->CorY;
+	}
+	GPS_UpdatePathYaw(pgps);
+}
+
+/** @brief  : Save GPS path coordinate to internal flash memory
+**  @agr    : GPS and FlashMemory
+**  @retval : none
+**/
+void	GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash)
+{
+	for(int i = 0; i < pgps->NbOfWayPoints; i++)
+	{
+		pflash->Length += ToChar(pgps->Path_X[i],&pflash->WriteInBuffer[pflash->Length]);
+		pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
+	}
+	WriteToFlash(pflash,FLASH_Sector_7,FLASH_GPSPara_BaseAddr);
+	pflash->Length = 0;
 }
 
 /** @brief  : Function get lat lon value from GNGLL message
@@ -904,56 +993,56 @@ void	SelectFuzzyOutput(double vel)
 **  @retval : Output value
 **/
 
-void	Defuzzification_Max_Min(IMU *pimu, double in1, double in2)
+void	Defuzzification_Max_Min(IMU *pimu)
 {
 	double pBeta[5],num = 0, den = 0, temp;
 	//NB and NE is NB
-	pBeta[0] = Fuzzy_Min(Trapf(&In1_NB,in1), Trapf(&In2_NE,in2));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_NB,pimu->Fuzzy_Error), Trapf(&In2_NE,pimu->Fuzzy_Error_dot));
 	num = NB * pBeta[0];
 	den = pBeta[0];
 	//NS and NE is NM
 	//NB and ZE is NM
-	pBeta[0] = Fuzzy_Min(Trimf(&In1_NS,in1),Trapf(&In2_NE,in2));
-	pBeta[1] = Fuzzy_Min(Trapf(&In1_NB,in1),Trimf(&In2_ZE,in2));
+	pBeta[0] = Fuzzy_Min(Trimf(&In1_NS,pimu->Fuzzy_Error),Trapf(&In2_NE,pimu->Fuzzy_Error_dot));
+	pBeta[1] = Fuzzy_Min(Trapf(&In1_NB,pimu->Fuzzy_Error),Trimf(&In2_ZE,pimu->Fuzzy_Error_dot));
 	temp = Fuzzy_Max(pBeta,2);
 	num += NM * temp;
 	den += temp;
 	//ZE and NE is NS
 	//NS and ZE is NS
 	//NB and PO is NS
-	pBeta[0] = Fuzzy_Min(Trimf(&In1_ZE,in1),Trapf(&In2_NE,in2));
-	pBeta[1] = Fuzzy_Min(Trimf(&In1_NS,in1),Trimf(&In2_ZE,in2));
-	pBeta[2] = Fuzzy_Min(Trapf(&In1_NB,in1),Trapf(&In2_PO,in2));
+	pBeta[0] = Fuzzy_Min(Trimf(&In1_ZE,pimu->Fuzzy_Error),Trapf(&In2_NE,pimu->Fuzzy_Error_dot));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_NS,pimu->Fuzzy_Error),Trimf(&In2_ZE,pimu->Fuzzy_Error_dot));
+	pBeta[2] = Fuzzy_Min(Trapf(&In1_NB,pimu->Fuzzy_Error),Trapf(&In2_PO,pimu->Fuzzy_Error_dot));
 	temp = Fuzzy_Max(pBeta,3);
 	num += NS * temp;
 	den += temp;
 	//PS and NE is ZE
 	//ZE and ZE is ZE
 	//NS and PO is ZE
-	pBeta[0] = Fuzzy_Min(Trimf(&In1_PS,in1),Trapf(&In2_NE,in2));
-	pBeta[1] = Fuzzy_Min(Trimf(&In1_ZE,in1),Trimf(&In2_ZE,in2));
-	pBeta[2] = Fuzzy_Min(Trimf(&In1_NS,in1),Trapf(&In2_PO,in2));
+	pBeta[0] = Fuzzy_Min(Trimf(&In1_PS,pimu->Fuzzy_Error),Trapf(&In2_NE,pimu->Fuzzy_Error_dot));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_ZE,pimu->Fuzzy_Error),Trimf(&In2_ZE,pimu->Fuzzy_Error_dot));
+	pBeta[2] = Fuzzy_Min(Trimf(&In1_NS,pimu->Fuzzy_Error),Trapf(&In2_PO,pimu->Fuzzy_Error_dot));
 	temp = Fuzzy_Max(pBeta,3);
 	num += ZE * temp;
 	den += temp;
 	//PB and NE is PS
 	//PS and ZE is PS
 	//ZE and PO is PS
-	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,in1),Trapf(&In2_NE,in2));
-	pBeta[1] = Fuzzy_Min(Trimf(&In1_PS,in1),Trimf(&In2_ZE,in2));
-	pBeta[2] = Fuzzy_Min(Trimf(&In1_ZE,in1),Trapf(&In2_PO,in2));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,pimu->Fuzzy_Error),Trapf(&In2_NE,pimu->Fuzzy_Error_dot));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_PS,pimu->Fuzzy_Error),Trimf(&In2_ZE,pimu->Fuzzy_Error_dot));
+	pBeta[2] = Fuzzy_Min(Trimf(&In1_ZE,pimu->Fuzzy_Error),Trapf(&In2_PO,pimu->Fuzzy_Error_dot));
 	temp = Fuzzy_Max(pBeta,3);
 	num += PS * temp;
 	den += temp;
 	//PB and ZE is PM
 	//PS and PO is PM
-	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,in1),Trimf(&In2_ZE,in2));
-	pBeta[1] = Fuzzy_Min(Trimf(&In1_PS,in1),Trapf(&In2_PO,in2));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,pimu->Fuzzy_Error),Trimf(&In2_ZE,pimu->Fuzzy_Error_dot));
+	pBeta[1] = Fuzzy_Min(Trimf(&In1_PS,pimu->Fuzzy_Error),Trapf(&In2_PO,pimu->Fuzzy_Error_dot));
 	temp = Fuzzy_Max(pBeta,2);
 	num += PM * temp;
 	den += temp;
 	//PB and PO is PB
-	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,in1),Trapf(&In2_PO,in2));
+	pBeta[0] = Fuzzy_Min(Trapf(&In1_PB,pimu->Fuzzy_Error),Trapf(&In2_PO,pimu->Fuzzy_Error_dot));
 	num += PB * pBeta[0];
 	den += pBeta[0];
 	if(den == 0) pimu->Fuzzy_Out = 0;
@@ -973,20 +1062,22 @@ void	Defuzzification_Max_Min(IMU *pimu, double in1, double in2)
 **/
 void	IMU_ParametesInit(IMU *pimu)
 {
-	pimu->Pre_Angle = 0;
-	pimu->Set_Angle = 0;
-	pimu->Angle = 0;
-	pimu->Fuzzy_Out = 0;
-	pimu->First_RxFlag = false;
+	pimu->Pre_Angle 					= 0;
+	pimu->Set_Angle 					= 0;
+	pimu->Angle 							= 0;
+	pimu->Fuzzy_Out 					= 0;
+	pimu->Fuzzy_Error 				= 0;
+	pimu->Fuzzy_Error_dot			= 0;
+	pimu->First_RxFlag 				= false;
 }
 
 /** @brief  : Update Set angle
 **  @agr    : IMU and Angle
 **  @retval : none
 **/
-void	IMU_UpdateSetAngle(IMU *pimu, double Angle)
+void	IMU_UpdateSetAngle(IMU *pimu, double *pangle)
 {
-	pimu->Set_Angle = pimu->Angle + Angle;
+	pimu->Set_Angle = pimu->Angle + *pangle;
 }
 
 /** @brief  : Update previous angle
@@ -1005,6 +1096,31 @@ void	IMU_UpdatePreAngle(IMU *pimu)
 void	IMU_UpdateAngle(IMU *pimu, double Angle)
 {
 	pimu->Angle = Angle;
+}
+
+/** @brief  : Update input for fuzzy controller
+**  @agr    : imu and sampletime
+**  @retval : none
+**/
+void	IMU_UpdateFuzzyInput(IMU *pimu, double *pSampleTime)
+{
+	pimu->Fuzzy_Error 		= pimu->Set_Angle - pimu->Angle;
+	pimu->Fuzzy_Error_dot = -(pimu->Angle - pimu->Pre_Angle)/(*pSampleTime);
+	if(pimu->Fuzzy_Error > 180) pimu->Fuzzy_Error -= 360;
+	else if(pimu->Fuzzy_Error < -180) pimu->Fuzzy_Error += 360;
+	pimu->Fuzzy_Error 		*= pimu->Ke;
+	pimu->Fuzzy_Error_dot *= pimu->Kedot;
+}
+
+/** @brief  : Update fuzzy coefficients
+**  @agr    : imu and Ke,kedot,ku
+**  @retval : none
+**/
+void	IMU_UpdateFuzzyCoefficients(IMU *pimu, double Ke, double Kedot, double Ku)
+{
+	pimu->Ke		  = Ke;
+	pimu->Kedot 	= Kedot;
+	pimu->Ku 			= Ku;
 }
 
 /** @brief  : Get data from IMU message
@@ -1094,17 +1210,17 @@ void EraseMemory(uint32_t Flash_Sector)
 **  @agr    : Flash_Sector, Sector_BaseAddr and input word data pointer
 **  @retval : None
 **/
-void WriteToFlash(uint32_t Flash_Sector, uint32_t Sector_BaseAddr, uint8_t *inputmessage, int length)
+void WriteToFlash(FlashMemory *pflash, uint32_t FLASH_Sector, uint32_t FLASH_BaseAddr)
 {
 	uint32_t pInput[50] = {0};
-	pInput[0] = Convert4BytesToWordData(inputmessage,&pInput[1],length);
+	pInput[0] = Convert4BytesToWordData(pflash->WriteInBuffer,&pInput[1],pflash->Length);
 	FLASH_Unlock();
-	FLASH_ProgramWord(Sector_BaseAddr,pInput[0]);
-	Sector_BaseAddr += 4;
+	FLASH_ProgramWord(FLASH_BaseAddr,pInput[0]);
+	FLASH_BaseAddr += 4;
 	for(int i = 0; i < pInput[0]; i++)
 	{
-		FLASH_ProgramWord(Sector_BaseAddr,pInput[i + 1]);
-		Sector_BaseAddr += 4;
+		FLASH_ProgramWord(FLASH_BaseAddr,pInput[i + 1]);
+		FLASH_BaseAddr += 4;
 	}
 	FLASH_Lock();
 }
@@ -1113,22 +1229,22 @@ void WriteToFlash(uint32_t Flash_Sector, uint32_t Sector_BaseAddr, uint8_t *inpu
 **  @agr    : input and output message
 **  @retval : None
 **/
-void ReadFromFlash(uint32_t Sector_BaseAddr, uint8_t *pOutBuffer)
+void ReadFromFlash(FlashMemory *pflash, uint32_t FLASH_BaseAddr)
 {
 	int i = 0;
 	uint32_t mask = 0xFF000000;
-	int length = (int)(*(uint32_t*)Sector_BaseAddr);
-	Sector_BaseAddr += 4;
+	int length = (int)(*(uint32_t*)FLASH_BaseAddr);
+	FLASH_BaseAddr += 4;
 	for(int count = 0; count < length; count++)
 	{
 		for(int j = 3; j >= 0; j--)
 		{
-			pOutBuffer[i] = (uint8_t)(((*(uint32_t*)Sector_BaseAddr) & mask) >> (8 * j));
+			pflash->ReadOutBuffer[i] = (uint8_t)(((*(uint32_t*)FLASH_BaseAddr) & mask) >> (8 * j));
 			mask >>= 8;
 			i++;
 		}
 		mask = 0xFF000000;
-		Sector_BaseAddr += 4;
+		FLASH_BaseAddr += 4;
 	}
 }
 
