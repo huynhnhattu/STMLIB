@@ -5,6 +5,7 @@ GPIO_InitTypeDef				 F_GPIO_Struct;
 /*----- Stanley Variables -----*/
 
 /*----- Robot Parameter -------*/
+Status						VehStt;
 DCMotor 					M1, M2, Ang;
 GPS   						GPS_NEO;
 IMU								Mag;
@@ -15,6 +16,26 @@ Vehicle						Veh;
 double 						NB,NM,NS,ZE,PS,PM,PB;
 trimf 						In1_NS,In1_ZE,In1_PS,In2_ZE;
 trapf 						In1_NB,In1_PB,In2_NE,In2_PO;
+/*----- Init, and function to config vehicle status -------*/
+void	Status_ParametersInit(Status *pstt)
+{
+	pstt->GPS_Coordinate_Reveived = false;
+	pstt->GPS_Coordinate_Sending  = false;
+	pstt->IMU_FirstSetAngle				= false;
+	pstt->Veh_Sample_Time					= false;
+	pstt->Veh_Send_Data						= false;
+}
+
+void	Status_UpdateStatus(bool *pstt, bool stt)
+{
+	*(pstt) = stt;
+}
+
+bool	Status_CheckStatus(bool *pstt)
+{
+	return *pstt;
+}
+
 /*----- Functions -----*/
 /** @brief  : Led test
 **	@agr    : void
@@ -59,7 +80,7 @@ void PID_ParametersInitial(DCMotor *ipid)
 	ipid->Pre_Error = 0;
 	ipid->Pre_PID = 0;
 	ipid->PID_Out = 0;
-	ipid->Set_Vel = 30;
+	ipid->Set_Vel = 0;
 	ipid->Current_Vel = 0;
 	ipid->Enc = 0;
 	ipid->PreEnc = 0;
@@ -153,6 +174,8 @@ double ToRadian(double degree)
 /* ----------------------- Timer functions -----------------------------------*/
 void	Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send)
 {
+	ptime->Time_Sample_Count = 0;
+	ptime->Time_Send_Count = 0;
 	ptime->Sample_Time = Sample;
 	ptime->Send_Time = Send;
 }
@@ -178,8 +201,9 @@ void	Veh_ParametersInit(Vehicle *pveh)
 	pveh->ManualCtrlKey = 0;
 	pveh->Manual_Angle = 0;
 	pveh->Manual_Velocity = 0;
-	pveh->Mode = KeyBoard_Mode;
+	pveh->Mode = None_Mode;
 	pveh->LengthOfCommands = 0;
+	pveh->SendData_Ind = 0;
 }
 
 void	Veh_UpdateVehicleFromKey(Vehicle *pveh)
@@ -213,6 +237,7 @@ void	Veh_UpdateMaxVelocity(Vehicle *pveh, double MaxVelocity)
 {
 	pveh->Max_Velocity = MaxVelocity;
 }
+
 /* ----------------------- GPS function ---------------------------------------*/
 /** @brief  : Round value
 **  @agr    : input
@@ -485,7 +510,7 @@ Check_Status StringHeaderCompare(char *s1, char *s2)
 **  @agr    : Input message
 **  @retval : None 
 **/
-Command_State	GetNbOfReceiveHeader(char *input)
+Command_State		GetNbOfReceiveHeader(char *input)
 {
 	if(StringHeaderCompare(input,"$VEHCF"))
 		return Vehicle_Config;
@@ -505,7 +530,7 @@ Command_State	GetNbOfReceiveHeader(char *input)
 		return Path_Plan;
 	else if(StringHeaderCompare(input,"$FSAVE"))
 		return Flash_Save;
-	else if(StringHeaderCompare(input,"KCTRL"))
+	else if(StringHeaderCompare(input,"$KCTRL"))
 		return KeyBoard_Control;
 	else return None;
 }
@@ -636,7 +661,6 @@ void GPS_ParametersInit(GPS *pgps)
 	pgps->NbOfWayPoints = 0;
 	pgps->Pre_CorX = 0;
 	pgps->Pre_CorY = 0;
-	pgps->Rx_Flag = false;
 }
 
 /** @brief  : GPS updates path yaw 
@@ -1068,7 +1092,6 @@ void	IMU_ParametesInit(IMU *pimu)
 	pimu->Fuzzy_Out 					= 0;
 	pimu->Fuzzy_Error 				= 0;
 	pimu->Fuzzy_Error_dot			= 0;
-	pimu->First_RxFlag 				= false;
 }
 
 /** @brief  : Update Set angle

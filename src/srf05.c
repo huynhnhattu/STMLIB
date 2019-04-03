@@ -1,5 +1,11 @@
-#include "srf05.h"
+#include "Srf05.h"
 
+GPIO_InitTypeDef						Srf05_GPIO_Struct;
+TIM_TimeBaseInitTypeDef			Srf05_TIM_TimeBaseStruct;
+TIM_ICInitTypeDef						Srf05_TIM_ICStruct;
+NVIC_InitTypeDef						Srf05_NVIC_Struct;
+uint16_t counter = 0;
+Srf05												Srf05_Sensor;
 /** @Brief: Enable TIMx peripheral clock
 **	@Args : TIMx
 **	@Ret	: None
@@ -120,18 +126,22 @@ void	TIM16_Delay_US(TIM_TypeDef *TIMx, uint16_t period)
 **	@Args : Sensor variables structure, GPIOx, TIMx, Trigger input pin to start the sensor and Output pin trigger of sensor
 **	@Ret	: None
 **/
-void	Srf05_ParametersInitial(Srf05 *psrf05, GPIO_TypeDef *GPIOx, TIM_TypeDef *TIMx, uint16_t Srf05_TriggerInput_Pin, uint16_t Srf05_TriggerOutput_Pin)
+void	Srf05_ParametersInitial(Srf05 *psrf05, GPIO_TypeDef *GPIOx, TIM_TypeDef *TIMx, TIM_TypeDef *TIMx_Delay, uint16_t Srf05_TriggerInput_Pin, uint16_t Srf05_TriggerOutput_Pin)
 {
 	psrf05->GPIOx											= GPIOx;
 	psrf05->TIMx											= TIMx;
 	psrf05->Srf05_TriggerInput_Pin 		= Srf05_TriggerInput_Pin;
 	psrf05->Srf05_TriggerOutput_Pin		= Srf05_TriggerOutput_Pin;
-	
+	psrf05->TIMx_Delay								= TIMx_Delay;
+	psrf05->Timeout										= SAI;
+	EnableGPIOxClock(GPIOx);
 	/* Config GPIO pin */
-	Srf05_GPIO_Struct.GPIO_Mode									= GPIO_Mode_IN;
+	Srf05_GPIO_Struct.GPIO_Mode									= GPIO_Mode_AF;
 	Srf05_GPIO_Struct.GPIO_Pin									= Srf05_TriggerOutput_Pin;
 	Srf05_GPIO_Struct.GPIO_Speed								= GPIO_Speed_50MHz;
 	GPIO_Init(GPIOx,&Srf05_GPIO_Struct);
+	
+	GPIO_PinAFConfig(psrf05->GPIOx,GPIO_PinSource8,GPIO_AF_TIM10);
 	
 	Srf05_GPIO_Struct.GPIO_Mode									= GPIO_Mode_OUT;
 	Srf05_GPIO_Struct.GPIO_Pin									= Srf05_TriggerInput_Pin;
@@ -140,42 +150,63 @@ void	Srf05_ParametersInitial(Srf05 *psrf05, GPIO_TypeDef *GPIOx, TIM_TypeDef *TI
 	Srf05_GPIO_Struct.GPIO_Speed								= GPIO_Speed_50MHz;
 	GPIO_Init(GPIOx,&Srf05_GPIO_Struct);
 	
+	EnableTIMPeriphClock(TIMx);
 	/* Config time base struct */
 	Srf05_TIM_TimeBaseStruct.TIM_Prescaler			= (SystemCoreClock / 1000000) - 1; //us
-	Srf05_TIM_TimeBaseStruct.TIM_Period					= 0;
+	Srf05_TIM_TimeBaseStruct.TIM_Period					= 0xFFFF;
 	Srf05_TIM_TimeBaseStruct.TIM_ClockDivision 	= TIM_CKD_DIV1;
 	Srf05_TIM_TimeBaseStruct.TIM_CounterMode 	  = TIM_CounterMode_Up;
 	TIM_TimeBaseInit(TIMx,&Srf05_TIM_TimeBaseStruct);
-	TIM_Cmd(TIMx,DISABLE);
+	Srf05_TIM_ICStruct.TIM_Channel							= TIM_Channel_1;
+	Srf05_TIM_ICStruct.TIM_ICPolarity						= TIM_ICPolarity_BothEdge;
+	Srf05_TIM_ICStruct.TIM_ICPrescaler					= TIM_ICPSC_DIV1;
+	Srf05_TIM_ICStruct.TIM_ICSelection					= TIM_ICSelection_DirectTI;
+	TIM_ICInit(psrf05->TIMx,&Srf05_TIM_ICStruct);
+	
+	Srf05_NVIC_Struct.NVIC_IRQChannel						= TIM1_UP_TIM10_IRQn;
+	Srf05_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 0;
+	Srf05_NVIC_Struct.NVIC_IRQChannelSubPriority = 0;
+	Srf05_NVIC_Struct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&Srf05_NVIC_Struct);
+	
+	TIM_ITConfig(TIMx,TIM_IT_CC1,ENABLE);
+	TIM_Cmd(TIMx,ENABLE);
 }
 
-/** @Brief: Get data functions
-**	@Args : Srf05
+/** @Brief: Get data function
+**	@Args : srf05
 **	@Ret	: None
 **/
-float Srf05_GetData(Srf05 *psrf05)
+void	Srf05_GetData(Srf05 *psrf05)
 {
-	float result;
-	uint16_t counter;
-	/* Trigger input to sensor to start read data */
 	GPIO_ResetBits(psrf05->GPIOx,psrf05->Srf05_TriggerInput_Pin);
-	TIM16_Delay_US(psrf05->TIMx,5);
+	TIM16_Delay_US(psrf05->TIMx_Delay,5);
 	GPIO_SetBits(psrf05->GPIOx,psrf05->Srf05_TriggerInput_Pin);
-	TIM16_Delay_US(psrf05->TIMx,10);
+	TIM16_Delay_US(psrf05->TIMx_Delay,10);
 	GPIO_ResetBits(psrf05->GPIOx,psrf05->Srf05_TriggerInput_Pin);
-	while(!GPIO_ReadInputDataBit(psrf05->GPIOx,psrf05->Srf05_TriggerOutput_Pin));
-	TIM_Cmd(psrf05->TIMx,ENABLE);
-	while(GPIO_ReadInputDataBit(psrf05->GPIOx,psrf05->Srf05_TriggerOutput_Pin));
-	counter = TIM_GetCounter(psrf05->TIMx);
-	TIM_Cmd(psrf05->TIMx,DISABLE);
-	if(counter > 30000) result = 0;
-	else
+	for(uint32_t timeout = 0; timeout < 1000000; timeout++)
 	{
-		result 	= (double)counter / Srf05_Const;
+		if(psrf05->Timeout == DUNG)
+		{
+			psrf05->Timeout = SAI;
+			psrf05->Data_Out = ((double)((double)counter / Srf05_Const))/2;
+			break;
+		}
 	}
-	TIM_SetCounter(psrf05->TIMx,0);
-	return result;
 }
 
+void TIM1_UP_TIM10_IRQHandler(void)
+{
+	TIM_ClearITPendingBit(Srf05_Sensor.TIMx,TIM_IT_CC1);
+	if(GPIO_ReadInputDataBit(Srf05_Sensor.GPIOx,Srf05_Sensor.Srf05_TriggerOutput_Pin))
+	{
+		TIM_SetCounter(Srf05_Sensor.TIMx,0);
+	}
+	else
+	{
+		counter = TIM_GetCapture1(Srf05_Sensor.TIMx);
+		Srf05_Sensor.Timeout  = DUNG;
+	}
+}
 
 

@@ -13,26 +13,31 @@
 			 Step 3:
 					(+)		Call function Srf05_GetData(&Srf05_Sensor) to get data
 */
-GPIO_InitTypeDef					Srf05_GPIOStruct;
-TIM_TimeBaseInitTypeDef		Srf05_TimeBaseStruct;
 /* ------------ Device parameters	--------------------------*/
-#define					Srf05_Const											(float)29.412
+#define					Srf05_Const											(double)29.412
 
-GPIO_InitTypeDef						Srf05_GPIO_Struct;
-TIM_TimeBaseInitTypeDef			Srf05_TIM_TimeBaseStruct;
+typedef enum{
+	SAI = 0,
+	DUNG,
+}LOGIC;
+
 typedef struct Srf05{
 	GPIO_TypeDef	*GPIOx;
 	TIM_TypeDef		*TIMx;
+	TIM_TypeDef		*TIMx_Delay;
 	uint16_t			Srf05_TriggerInput_Pin;
 	uint16_t			Srf05_TriggerOutput_Pin;
+	LOGIC					Timeout;
+	double				Data_Out;
 }Srf05;
 
-
+extern Srf05 Srf05_Sensor;
 
 /* Export function */
+void 			TIM1_UP_TIM10_IRQHandler(void);
 void 			TIM16_Delay_US(TIM_TypeDef *TIMx, uint16_t period);
-void			Srf05_ParametersInitial(Srf05 *psrf05, GPIO_TypeDef *GPIOx, TIM_TypeDef *TIMx, uint16_t Srf05_TriggerInput_Pin, uint16_t Srf05_TriggerOutput_Pin);
-float			Srf05_GetData(Srf05 *psrf05);
+void			Srf05_ParametersInitial(Srf05 *psrf05, GPIO_TypeDef *GPIOx, TIM_TypeDef *TIMx,TIM_TypeDef *TIMx_Delay, uint16_t Srf05_TriggerInput_Pin, uint16_t Srf05_TriggerOutput_Pin);
+void			Srf05_GetData(Srf05 *psrf05);
 
 
 

@@ -34,10 +34,9 @@ void M1_Encoder_Config(void)
 		TIM_EncoderInterfaceConfig(M1_TIMx,TIM_EncoderMode_TI12,TIM_ICPolarity_Rising,TIM_ICPolarity_Rising);
 		TIM_TimeBaseInit(M1_TIMx,&En_TIM_BaseStruct);
 		/* Config interrupt */
-		NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 		En_NVIC_Struct.NVIC_IRQChannel = M1_TIMx_IRQn;
-		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 1;
-		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 3;
+		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 2;
+		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 0;
 		En_NVIC_Struct.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&En_NVIC_Struct);
 		TIM_ITConfig(M1_TIMx,TIM_IT_Update,ENABLE);
@@ -71,10 +70,9 @@ void M2_Encoder_Config(void)
 		TIM_EncoderInterfaceConfig(M2_TIMx,TIM_EncoderMode_TI12,TIM_ICPolarity_Rising,TIM_ICPolarity_Rising);
 		TIM_TimeBaseInit(M2_TIMx,&En_TIM_BaseStruct);
 		/* Config interrupt */
-		NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 		En_NVIC_Struct.NVIC_IRQChannel = M2_TIMx_IRQn;
-		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 1;
-		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 3;
+		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 2;
+		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 1;
 		En_NVIC_Struct.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&En_NVIC_Struct);
 		TIM_ITConfig(M2_TIMx,TIM_IT_Update,ENABLE);

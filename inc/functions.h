@@ -16,6 +16,14 @@ typedef enum
 	true,
 }bool;
 
+typedef struct Status{
+	bool 				IMU_FirstSetAngle;
+	bool				Veh_Sample_Time;
+	bool				Veh_Send_Data;
+	bool				GPS_Coordinate_Reveived;
+	bool				GPS_Coordinate_Sending;
+}Status;
+
 typedef	enum{
 	None = 0,
 	Vehicle_Config,
@@ -40,8 +48,9 @@ typedef enum{
 
 typedef struct Time{
 	uint32_t		Sample_Time;
-	uint32_t    Time_Count;
-	uint16_t    Send_Time;
+	uint32_t    Time_Sample_Count;
+	uint32_t    Send_Time;
+	uint32_t		Time_Send_Count;
 	double			T;
 }Time;
 
@@ -88,7 +97,6 @@ typedef struct IMU{
 	double		Ke;
 	double  	Kedot;
 	double 		Ku;
-	bool			First_RxFlag;
 }IMU;
 
 typedef struct GPS{
@@ -100,8 +108,6 @@ typedef struct GPS{
 	double 		Pre_CorX;
 	double 		Pre_CorY;
 	double 		Robot_Velocity;
-	bool 			Rx_Flag;
-	bool			Send_Flag;
 	int 			NbOfWayPoints;
 	double		Delta_Angle;
 	double    Path_X[20];
@@ -114,6 +120,7 @@ typedef	struct Vehicle
 {
 	Mode								Mode;
 	int 								LengthOfCommands;
+	int									SendData_Ind;
 	char								ManualCtrlKey;
 	double    					Max_Velocity;
 	double							Manual_Velocity;
@@ -146,6 +153,7 @@ typedef struct FlashMemory{
 #define						FLASH_FuzPara_BaseAddr					0x08061000		//(4 Kbytes) (0x08061000 - 0x08061FFF)
 #define						FLASH_GPSPara_BaseAddr					0x08062000		//(120 KBytes) 
 /* Export variables */
+extern Status											VehStt;
 extern DCMotor 										M1,M2;
 extern Vehicle										Veh;
 extern trimf 											In1_NS,In1_ZE,In1_PS,In2_ZE;
@@ -165,6 +173,10 @@ uint8_t					ToHex(uint8_t input);
 double					ToRPM(double vel);
 double					fix(double value);
 double 					Pi_To_Pi(double angle);
+/*------------ Vehicle Status update -------------*/
+void						Status_ParametersInit(Status *pstt);
+void						Status_UpdateStatus(bool *pstt, bool stt);
+bool						Status_CheckStatus(bool *pstt);
 /*------------ Timer Function --------------------*/
 void						Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send);
 void						Time_SampleTimeUpdate(Time *ptime, uint32_t Sample);

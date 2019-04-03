@@ -9,7 +9,8 @@
                 "C:/Users/DELL-PC/Desktop/Main_Desktop/automation_project/UnmannedVehicle/Control/Libraries/CMSIS/Device/ST/STM32F4xx/Include",
                 "C:/Users/DELL-PC/Desktop/Main_Desktop/automation_project/UnmannedVehicle/Control/Libraries/CMSIS/Include",
                 "C:/MinGW/lib/gcc/mingw32/6.3.0/include/c++",
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "C:/Users/DELL-PC/Desktop/Main_Desktop/automation_project/UnmannedVehicle/Control/Libraries/CMSIS/Device/ST/STM32F4xx/Include"
             ],
             "defines": [
                 "_DEBUG",
