@@ -19,19 +19,21 @@ trapf 						In1_NB,In1_PB,In2_NE,In2_PO;
 /*----- Init, and function to config vehicle status -------*/
 void	Status_ParametersInit(Status *pstt)
 {
-	pstt->GPS_Coordinate_Reveived = false;
-	pstt->GPS_Coordinate_Sending  = false;
-	pstt->IMU_FirstSetAngle				= false;
-	pstt->Veh_Sample_Time					= false;
-	pstt->Veh_Send_Data						= false;
+	pstt->GPS_Coordinate_Reveived = Check_NOK;
+	pstt->GPS_Coordinate_Sending  = Check_NOK;
+	pstt->IMU_FirstSetAngle				= Check_NOK;
+	pstt->Veh_Sample_Time					= Check_NOK;
+	pstt->Veh_Send_Data						= Check_NOK;
+	pstt->Veh_SendData_Flag				= Check_OK;
+	pstt->Srf05_TimeOut_Flag			= Check_NOK;
 }
 
-void	Status_UpdateStatus(bool *pstt, bool stt)
+void	Status_UpdateStatus(Check_Status *pstt, Check_Status stt)
 {
 	*(pstt) = stt;
 }
 
-bool	Status_CheckStatus(bool *pstt)
+Check_Status	Status_CheckStatus(Check_Status *pstt)
 {
 	return *pstt;
 }
@@ -176,8 +178,10 @@ void	Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send)
 {
 	ptime->Time_Sample_Count = 0;
 	ptime->Time_Send_Count = 0;
+	ptime->Srf05_Count	= 0;
 	ptime->Sample_Time = Sample;
 	ptime->Send_Time = Send;
+	ptime->Srf05_Sample_Time = 30000;
 }
 
 void	Time_SampleTimeUpdate(Time *ptime, uint32_t Sample)
@@ -192,7 +196,7 @@ void	Time_GetSampleTime(Time *ptime)
 
 void	Time_SendTimeUpdate(Time *ptime, uint32_t TSend)
 {
-	ptime->Send_Time = TSend;
+	ptime->Send_Time = TSend * 1000;
 }
 /*------------------------ Vehicle Status Function ----------------------------*/
 void	Veh_ParametersInit(Vehicle *pveh)
@@ -201,7 +205,7 @@ void	Veh_ParametersInit(Vehicle *pveh)
 	pveh->ManualCtrlKey = 0;
 	pveh->Manual_Angle = 0;
 	pveh->Manual_Velocity = 0;
-	pveh->Mode = None_Mode;
+	pveh->Mode = KeyBoard_Mode;
 	pveh->LengthOfCommands = 0;
 	pveh->SendData_Ind = 0;
 }
@@ -220,13 +224,13 @@ void	Veh_UpdateVehicleFromKey(Vehicle *pveh)
 	{
 		pveh->Manual_Angle += 30;
 		if(pveh->Manual_Angle > 180) pveh->Manual_Angle -= 360;
-		IMU_UpdateSetAngle(&Mag,&pveh->Manual_Angle);
+		IMU_UpdateSetAngle(&Mag,pveh->Manual_Angle);
 	}
 	else if(pveh->ManualCtrlKey == 'A')
 	{
 		pveh->Manual_Angle -= 30;
 		if(pveh->Manual_Angle < -180) pveh->Manual_Angle += 360;
-		IMU_UpdateSetAngle(&Mag,&pveh->Manual_Angle);
+		IMU_UpdateSetAngle(&Mag,pveh->Manual_Angle);
 	}
 	if(pveh->Manual_Velocity > pveh->Max_Velocity) pveh->Manual_Velocity = pveh->Max_Velocity;
 	else if(pveh->Manual_Velocity < 0) pveh->Manual_Velocity = 0;
@@ -236,6 +240,17 @@ void	Veh_UpdateVehicleFromKey(Vehicle *pveh)
 void	Veh_UpdateMaxVelocity(Vehicle *pveh, double MaxVelocity)
 {
 	pveh->Max_Velocity = MaxVelocity;
+}
+
+Check_Status Veh_GetCommandMessage(char *inputmessage, char result[50][30])
+{
+	int index = 0;
+	while((inputmessage[index] != 0x0D) && (inputmessage[index + 1] != 0x0A) && (inputmessage[index] != 0))
+	{
+		index++;
+	}
+	GetMessageInfo(inputmessage,result,',');
+	return IsCorrectMessage((uint8_t*)&inputmessage[1],index - 3,inputmessage[index - 2],inputmessage[index - 1]);
 }
 
 /* ----------------------- GPS function ---------------------------------------*/
@@ -267,6 +282,7 @@ void GetMessageInfo(char *inputmessage, char result[50][30], char character)
 			result[i][j] = 0;
 		}
 	}
+	
 	while((inputmessage[index] != 0x0D) && (inputmessage[index + 1] != 0x0A) && (inputmessage[index] != 0))
 	{
 		if(inputmessage[index] != character)
@@ -497,11 +513,11 @@ Check_Status IsCorrectMessage(uint8_t *inputmessage, int length, uint8_t byte1, 
 **  @agr    : Input message
 **  @retval : 1 - equal, 0 - not equal
 **/
-Check_Status StringHeaderCompare(char *s1, char *s2)
+Check_Status StringHeaderCompare(char *s1, char header[])
 {
 	for(int i = 0; i < 6; i++)
 	{
-		if(s1[i] != s2[i]) return Check_NOK;
+		if(s1[i] != header[i]) return Check_NOK;
 	}
 	return Check_OK;
 }
@@ -661,6 +677,7 @@ void GPS_ParametersInit(GPS *pgps)
 	pgps->NbOfWayPoints = 0;
 	pgps->Pre_CorX = 0;
 	pgps->Pre_CorY = 0;
+	pgps->Goal_Flag = Check_NOK;
 }
 
 /** @brief  : GPS updates path yaw 
@@ -756,12 +773,14 @@ void GPS_GetLonFromString(GPS *pgps, char *inputmessage)
 **  @agr    : current pose of the robot and Pathx, Pathy
 **  @retval : Steering angle
 **/
-void GPS_StanleyControl(GPS *pgps)
+void GPS_StanleyControl(GPS *pgps, double SampleTime)
 {                   /*   Current pose of the robot   */ /*  Path coordinate  */ /*  ThetaP  */
 	double dmin = 0,dx,dy,d;
 	int 	 index = 0;
 	double efa, thetad, thetae, tyaw, goal_radius;
 	pgps->Angle = &Mag;
+	/* V = sqrt(vx^2 + vy^2) */
+	pgps->Robot_Velocity = sqrt(pow((pgps->CorX - pgps->Pre_CorX)/SampleTime,2) + pow((pgps->CorY - pgps->Pre_CorY)/SampleTime,2));
 	//Searching the nearest point
 	for(int i = 0; i < pgps->NbOfWayPoints; i++) 
 	{
@@ -788,12 +807,32 @@ void GPS_StanleyControl(GPS *pgps)
 		efa = -efa;
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
 	if(goal_radius <= 3)
-		pgps->Delta_Angle = 0;
+		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
 	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - pgps->Angle->Angle);
 	thetad = atan2(K * efa,pgps->Robot_Velocity);
 	pgps->Delta_Angle  = thetae + thetad;
+	pgps->Pre_CorX = pgps->CorX;
+	pgps->Pre_CorY = pgps->CorY;
 }
 
+Check_Status	GPS_GetMessage(char header[5], char *inputmessage,char result[50][30])
+{
+	int index = 0;
+	while(inputmessage[index] != 0)
+	{
+		if(inputmessage[index] == '$')
+		{
+			if((inputmessage[index + 1] == header[0]) && (inputmessage[index + 2] == header[1]) && (inputmessage[index + 3] == header[2]) && (inputmessage[index + 4] == header[3]) && (inputmessage[index + 5] == header[4]))
+			{
+				break;
+			}
+			else index++;
+		}
+		else index++;
+	}
+	GetMessageInfo(&inputmessage[index],result,',');
+	return IsCorrectMessage((uint8_t*)&inputmessage[index + 1], 46,(uint8_t)result[7][2], (uint8_t)result[7][3]);
+}
 /*-------------------- Fuzzy control -----------------------*/
 /* Variables of fuzzy control block */
 
@@ -1098,9 +1137,9 @@ void	IMU_ParametesInit(IMU *pimu)
 **  @agr    : IMU and Angle
 **  @retval : none
 **/
-void	IMU_UpdateSetAngle(IMU *pimu, double *pangle)
+void	IMU_UpdateSetAngle(IMU *pimu, double ComAngle)
 {
-	pimu->Set_Angle = pimu->Angle + *pangle;
+	pimu->Set_Angle = pimu->Angle + ComAngle;
 }
 
 /** @brief  : Update previous angle
@@ -1154,7 +1193,7 @@ double IMU_GetValue(uint8_t *inputmessage, int Val)
 {
 	double result = 0;
 	int i = 1, temp = 100000;
-	uint8_t TempBuffer[6][10];
+	uint8_t TempBuffer[6][10] = {0};
 	for(int row = 0; row < 6; row++)
 	{
 		for(int col = 0; col < 7; col++)

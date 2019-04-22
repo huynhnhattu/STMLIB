@@ -6,8 +6,8 @@ USART_InitTypeDef									US_USART_Struct;
 NVIC_InitTypeDef									US_NVIC_Struct;
 
 /* Variables */
-uint8_t 						U1_TxBuffer[100], U1_RxBuffer[50];
-uint8_t							U2_TxBuffer[50],  U2_RxBuffer[200];
+uint8_t 						U1_TxBuffer[100], U1_RxBuffer[47];
+uint8_t							U2_TxBuffer[50],  U2_RxBuffer[1000];
 uint8_t							U6_TxBuffer[200], U6_RxBuffer[200];
 /*----- USART1 configuration ---------*/
 void USART1_Config(uint32_t  BaudRate)
@@ -57,7 +57,7 @@ void USART1_Config(uint32_t  BaudRate)
 	DMA_Init(DMA2_Stream7,&US_DMA_Struct);
 	//-----------Config DMA USART Rx------------------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_4;
-	US_DMA_Struct.DMA_BufferSize							= 50;
+	US_DMA_Struct.DMA_BufferSize							= 47;
 	US_DMA_Struct.DMA_Mode 										= DMA_Mode_Normal;
 	US_DMA_Struct.DMA_DIR											= DMA_DIR_PeripheralToMemory;
 	US_DMA_Struct.DMA_Memory0BaseAddr					= (uint32_t)&U1_RxBuffer;
@@ -114,7 +114,7 @@ void USART2_Config(uint32_t  BaudRate)
 	
 	US_NVIC_Struct.NVIC_IRQChannel 										= USART2_IRQn;
 	US_NVIC_Struct.NVIC_IRQChannelPreemptionPriority 	= 0;
-	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 1;
+	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 2;
 	US_NVIC_Struct.NVIC_IRQChannelCmd									= ENABLE;
 	NVIC_Init(&US_NVIC_Struct);
 	
@@ -137,7 +137,7 @@ void USART2_Config(uint32_t  BaudRate)
 	DMA_Init(DMA1_Stream6,&US_DMA_Struct);
 	//-----------Config DMA USART Rx------------------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_4;
-	US_DMA_Struct.DMA_BufferSize							= 200;
+	US_DMA_Struct.DMA_BufferSize							= 1000;
 	US_DMA_Struct.DMA_Mode 										= DMA_Mode_Normal;
 	US_DMA_Struct.DMA_DIR											= DMA_DIR_PeripheralToMemory;
 	US_DMA_Struct.DMA_Memory0BaseAddr					= (uint32_t)&U2_RxBuffer;
@@ -156,7 +156,7 @@ void USART2_Config(uint32_t  BaudRate)
 	//------------NVIC Config----------
 	US_NVIC_Struct.NVIC_IRQChannel 										= DMA1_Stream5_IRQn;
 	US_NVIC_Struct.NVIC_IRQChannelPreemptionPriority 	= 0;
-	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 1;
+	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 2;
 	US_NVIC_Struct.NVIC_IRQChannelCmd									= ENABLE;
 	NVIC_Init(&US_NVIC_Struct);
 	DMA_ITConfig(DMA1_Stream5,DMA_IT_TC,ENABLE);
@@ -194,7 +194,7 @@ void USART6_Config(uint32_t BaudRate)
 	
 	US_NVIC_Struct.NVIC_IRQChannel 										= USART6_IRQn;
 	US_NVIC_Struct.NVIC_IRQChannelPreemptionPriority 	= 0;
-	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 0;
+	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 1;
 	US_NVIC_Struct.NVIC_IRQChannelCmd									= ENABLE;
 	NVIC_Init(&US_NVIC_Struct);
 	//--------Config DMA USART Tx----------
@@ -235,7 +235,7 @@ void USART6_Config(uint32_t BaudRate)
 	//------------NVIC Config----------
 	US_NVIC_Struct.NVIC_IRQChannel 										= DMA2_Stream2_IRQn;
 	US_NVIC_Struct.NVIC_IRQChannelPreemptionPriority 	= 0;
-	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 0;
+	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 1;
 	US_NVIC_Struct.NVIC_IRQChannelCmd									= ENABLE;
 	NVIC_Init(&US_NVIC_Struct);
 	DMA_ITConfig(DMA2_Stream2,DMA_IT_TC,ENABLE);

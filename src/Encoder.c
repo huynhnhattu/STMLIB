@@ -72,7 +72,7 @@ void M2_Encoder_Config(void)
 		/* Config interrupt */
 		En_NVIC_Struct.NVIC_IRQChannel = M2_TIMx_IRQn;
 		En_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = 2;
-		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 1;
+		En_NVIC_Struct.NVIC_IRQChannelSubPriority = 0;
 		En_NVIC_Struct.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&En_NVIC_Struct);
 		TIM_ITConfig(M2_TIMx,TIM_IT_Update,ENABLE);

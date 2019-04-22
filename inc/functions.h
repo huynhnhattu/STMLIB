@@ -10,18 +10,15 @@ typedef enum
 	Check_OK,
 }Check_Status;
 
-typedef enum 
-{
-	false = 0,
-	true,
-}bool;
 
 typedef struct Status{
-	bool 				IMU_FirstSetAngle;
-	bool				Veh_Sample_Time;
-	bool				Veh_Send_Data;
-	bool				GPS_Coordinate_Reveived;
-	bool				GPS_Coordinate_Sending;
+	Check_Status 				IMU_FirstSetAngle;
+	Check_Status				Veh_Sample_Time;
+	Check_Status				Veh_Send_Data;
+	Check_Status				GPS_Coordinate_Reveived;
+	Check_Status				GPS_Coordinate_Sending;
+	Check_Status				Veh_SendData_Flag;
+	Check_Status				Srf05_TimeOut_Flag;
 }Status;
 
 typedef	enum{
@@ -51,6 +48,8 @@ typedef struct Time{
 	uint32_t    Time_Sample_Count;
 	uint32_t    Send_Time;
 	uint32_t		Time_Send_Count;
+	uint32_t		Srf05_Sample_Time;
+	uint32_t		Srf05_Count;
 	double			T;
 }Time;
 
@@ -99,10 +98,12 @@ typedef struct IMU{
 	double 		Ku;
 }IMU;
 
+
 typedef struct GPS{
 	double 		CorX;
 	double 		CorY;
 	IMU				*Angle;
+	Check_Status			Goal_Flag;
 	double		Latitude;
 	double    Longitude;
 	double 		Pre_CorX;
@@ -175,8 +176,8 @@ double					fix(double value);
 double 					Pi_To_Pi(double angle);
 /*------------ Vehicle Status update -------------*/
 void						Status_ParametersInit(Status *pstt);
-void						Status_UpdateStatus(bool *pstt, bool stt);
-bool						Status_CheckStatus(bool *pstt);
+void						Status_UpdateStatus(Check_Status *pstt, Check_Status stt);
+Check_Status		Status_CheckStatus(Check_Status *pstt);
 /*------------ Timer Function --------------------*/
 void						Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send);
 void						Time_SampleTimeUpdate(Time *ptime, uint32_t Sample);
@@ -187,6 +188,7 @@ void						Veh_ParametersInit(Vehicle *pveh);
 void						Veh_GetManualCtrlKey(Vehicle *pveh, char key);
 void						Veh_UpdateVehicleFromKey(Vehicle *pveh);
 void						Veh_UpdateMaxVelocity(Vehicle *pveh, double MaxVelocity);
+Check_Status		Veh_GetCommandMessage(char *inputmessage, char result[50][30]);
 /*------------ PID Function ----------------------*/
 void						PID_UpdateEnc(DCMotor *ipid, uint16_t PulseCount);
 void						PID_SavePIDParaToFlash(FlashMemory *pflash, DCMotor *M1, DCMotor *M2);
@@ -202,13 +204,13 @@ int 						Readline(uint8_t *inputmessage, uint8_t *outputmessage);
 uint8_t			 		LRCCalculate(uint8_t *pBuffer, int length);
 Check_Status  	IsValidData(char input);
 Check_Status 		IsCorrectMessage(uint8_t *inputmessage, int length, uint8_t byte1, uint8_t byte2);
-Check_Status		StringHeaderCompare(char *s1, char *s2);
+Check_Status		StringHeaderCompare(char *s1, char header[]);
 Command_State		GetNbOfReceiveHeader(char *input);
 int							FeedBack(uint8_t *outputmessage, char status);
 
 /*--------Stanley functions and GPS --------------*/
 void						GPS_ParametersInit(GPS *pgps);
-void 						GPS_StanleyControl(GPS *pgps);
+void 						GPS_StanleyControl(GPS *pgps, double SampleTime);
 double					GPS_LLToDegree(double LL);
 void 						GPS_LatLonToUTM(GPS *pgps);  // Get 2 values of lat lon and update UTM coordiante to Corx and Cory
 void	 					GPS_GetLatFromString(GPS *pgps, char *inputmessage);
@@ -216,7 +218,7 @@ void						GPS_GetLonFromString(GPS *pgps, char *inputmessage);
 void						GPS_UpdatePathYaw(GPS *pgps);
 void						GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage);
 void						GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash);
-
+Check_Status		GPS_GetMessage(char header[5], char *inputmessage,char result[50][30]);
 /*--------Fuzzy control-------------------*/
 void						Fuzzy_ParametersInit(void);
 double 					Trapf(trapf *ptrapf, double x);
@@ -227,7 +229,7 @@ void						Defuzzification_Max_Min(IMU *pimu);
 
 /*--------IMU functions ---------*/
 void						IMU_ParametesInit(IMU *pimu);
-void						IMU_UpdateSetAngle(IMU *pimu, double *pangle);
+void						IMU_UpdateSetAngle(IMU *pimu, double ComAngle);
 void						IMU_UpdatePreAngle(IMU *pimu);
 void						IMU_UpdateAngle(IMU *pimu, double Angle);
 void						IMU_UpdateFuzzyInput(IMU *pimu, double *pSampleTime);
