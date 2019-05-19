@@ -10,15 +10,29 @@ typedef enum
 	Check_OK,
 }Check_Status;
 
+typedef enum{
+	Veh_NoneError 				= 0,
+	Veh_ReadMessage_Err,
+	Veh_ReadGxGLLMessage_Err,		
+	Veh_ReadGxGGAMessage_Err,
+	Veh_GxGLLCheckSum_Err,
+	Veh_GxGGACheckSum_Err,
+	Veh_InvalidGxGLLMessage_Err,
+}Vehicle_Error;
 
 typedef struct Status{
 	Check_Status 				IMU_FirstSetAngle;
 	Check_Status				Veh_Sample_Time;
 	Check_Status				Veh_Send_Data;
 	Check_Status				GPS_Coordinate_Reveived;
-	Check_Status				GPS_Coordinate_Sending;
 	Check_Status				Veh_SendData_Flag;
+	Check_Status				Veh_Calib_Flag;
 	Check_Status				Srf05_TimeOut_Flag;
+	Check_Status				Veh_Timer_Finish;
+	Check_Status				Veh_Timer_Start;
+	Check_Status				IMU_Calib_Finish;
+	Check_Status				Veh_Send_Parameters;
+	Check_Status				Veh_Auto_Flag;
 }Status;
 
 typedef	enum{
@@ -36,12 +50,33 @@ typedef	enum{
 }Command_State;
 
 typedef enum{
+	NSave = 0,
+	PID_Parameter, 
+	GPS_Coordinates,
+}Internal_Flash;
+
+typedef enum{
 	None_Mode = 0,
 	Auto_Mode,
 	Manual_Mode,
 	Calib_Mode,
 	KeyBoard_Mode,
 }Mode;
+
+typedef enum{
+	Invalid=0,
+	RTK_Fixed	=	4,
+	RTK_Float	=	5,
+	Dead	=	6,
+}GPS_Quality;
+
+typedef enum{
+	NoSensor = 0,
+	Sensor_Mid,
+	Sensor_Left,
+	Sensor_Right,
+	Sensor_Back,
+}Srf05_Sensor_Number;
 
 typedef struct Time{
 	uint32_t		Sample_Time;
@@ -62,6 +97,7 @@ typedef	struct  DCMotor{
 	uint8_t		OverFlow;
 	double		Set_Vel;
 	double 		Current_Vel;
+	uint8_t		Change_State;
 	double		*SampleTime;
 	double		Pre_PID;
 	double    Pre2_Error;
@@ -111,9 +147,11 @@ typedef struct GPS{
 	double 		Robot_Velocity;
 	int 			NbOfWayPoints;
 	double		Delta_Angle;
+	char			TempBuffer[50][30];
 	double    Path_X[20];
 	double		Path_Y[20];
 	double 		Path_Yaw[20];
+	int				GPS_Quality;
 }GPS;
 
 
@@ -126,6 +164,10 @@ typedef	struct Vehicle
 	double    					Max_Velocity;
 	double							Manual_Velocity;
 	double							Manual_Angle;
+	uint16_t						Distance;
+	uint8_t							TotalDistance;
+	uint8_t						  Srf05_Selected_Sensor;
+	Vehicle_Error				Veh_Error;
 }Vehicle;
 
 typedef	struct Message
@@ -135,6 +177,7 @@ typedef	struct Message
 }Message;
 
 typedef struct FlashMemory{
+	uint32_t 		 WriteIn32bBuffer[100];
 	uint8_t			 ReadOutBuffer[500];
 	uint8_t			 WriteInBuffer[500];
 	char  			 Message[20][30];
@@ -152,7 +195,7 @@ typedef struct FlashMemory{
 #define						FLASH_ProgramType_DoubleWord		VoltageRange_4
 #define						FLASH_PIDPara_BaseAddr 					0x08060000	  //(4 KBytes) (0x08060000 - 0x08060FFF)
 #define						FLASH_FuzPara_BaseAddr					0x08061000		//(4 Kbytes) (0x08061000 - 0x08061FFF)
-#define						FLASH_GPSPara_BaseAddr					0x08062000		//(120 KBytes) 
+#define						FLASH_GPSPara_BaseAddr					0x08040000		// (128 KBytes) 
 /* Export variables */
 extern Status											VehStt;
 extern DCMotor 										M1,M2;
@@ -169,11 +212,12 @@ extern FlashMemory 								Flash;
 void 	 					LedTest(void);     																				// Use 4 leds on board to test code
 double 					ToDegree(double rad); 																		// Convert rad to degree
 double 					ToRadian(double degree); 																	// Convert degree to rad
-uint8_t 				ToChar(double value, uint8_t *pBuffer); 									// Convert double value to char array
+uint8_t 				ToChar(double value, uint8_t *pBuffer,int NbAfDot); 									// Convert double value to char array
 uint8_t					ToHex(uint8_t input);
 double					ToRPM(double vel);
 double					fix(double value);
 double 					Pi_To_Pi(double angle);
+int							LengthOfLine(uint8_t *inputmessage);
 /*------------ Vehicle Status update -------------*/
 void						Status_ParametersInit(Status *pstt);
 void						Status_UpdateStatus(Check_Status *pstt, Check_Status stt);
@@ -187,6 +231,7 @@ void						Time_SendTimeUpdate(Time *ptime, uint32_t TSend);
 void						Veh_ParametersInit(Vehicle *pveh);
 void						Veh_GetManualCtrlKey(Vehicle *pveh, char key);
 void						Veh_UpdateVehicleFromKey(Vehicle *pveh);
+void						Veh_CheckStateChange(DCMotor *ipid, uint8_t State);
 void						Veh_UpdateMaxVelocity(Vehicle *pveh, double MaxVelocity);
 Check_Status		Veh_GetCommandMessage(char *inputmessage, char result[50][30]);
 /*------------ PID Function ----------------------*/
@@ -197,6 +242,7 @@ void 						PID_ParametersInitial(DCMotor *ipid);
 void					  PID_UpdateSetVel(DCMotor *ipid, double SetVal);
 void 						PID_ParametersUpdate(DCMotor *ipid, double Kp, double Ki, double Kd);
 void						PID_ResetEncoder(DCMotor *ipid);
+void						PID_ResetPID(DCMotor *ipid);
 /* -------Send and Receive data function------------ */
 void 						GetMessageInfo(char *inputmessage, char result[50][30], char character);
 double 					GetValueFromString(char *value);
@@ -206,8 +252,7 @@ Check_Status  	IsValidData(char input);
 Check_Status 		IsCorrectMessage(uint8_t *inputmessage, int length, uint8_t byte1, uint8_t byte2);
 Check_Status		StringHeaderCompare(char *s1, char header[]);
 Command_State		GetNbOfReceiveHeader(char *input);
-int							FeedBack(uint8_t *outputmessage, char status);
-
+int							FeedBack(uint8_t *outputmessage, char inputstring[]);
 /*--------Stanley functions and GPS --------------*/
 void						GPS_ParametersInit(GPS *pgps);
 void 						GPS_StanleyControl(GPS *pgps, double SampleTime);
@@ -218,7 +263,9 @@ void						GPS_GetLonFromString(GPS *pgps, char *inputmessage);
 void						GPS_UpdatePathYaw(GPS *pgps);
 void						GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage);
 void						GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash);
-Check_Status		GPS_GetMessage(char header[5], char *inputmessage,char result[50][30]);
+Check_Status		GPS_HeaderCompare(uint8_t *s1, char Header[5]);
+Check_Status		GPS_GetQualityFromString(GPS *pgps, uint8_t *inputmessage, char result[50][30]);
+Vehicle_Error		GPS_GetLLQMessage(GPS *pgps, uint8_t *inputmessage,char result[50][30]);
 /*--------Fuzzy control-------------------*/
 void						Fuzzy_ParametersInit(void);
 double 					Trapf(trapf *ptrapf, double x);
@@ -235,7 +282,6 @@ void						IMU_UpdateAngle(IMU *pimu, double Angle);
 void						IMU_UpdateFuzzyInput(IMU *pimu, double *pSampleTime);
 void						IMU_UpdateFuzzyCoefficients(IMU *pimu, double Ke, double Kedot, double Ku);
 double 					IMU_GetValue(uint8_t *inputmessage, int Val);
-int 						IMU_GetCommandMessage(char *inputmessage, uint8_t *outputmessage);
 
 /*-------- Flash Memory Embedded functions --------*/
 void 						WriteToFlash(FlashMemory *pflash, uint32_t FLASH_Sector, uint32_t FLASH_BaseAddr);

@@ -16,16 +16,18 @@ Config peripherals to control device then call function: Srf05_Initial()
 */	
 /* ------------ Device parameters	--------------------------*/
 #define					Srf05_Const											(double)29.412
-
 typedef enum{
 	SAI = 0,
 	DUNG,
 }LOGIC;
 
+
 typedef struct Srf05_InitTypeDef{
-	GPIO_TypeDef			*Srf05_GPIO;
+	GPIO_TypeDef			*Srf05_GPIO_Trigger;
+	GPIO_TypeDef			*Srf05_GPIO_Echo;
 	TIM_TypeDef				*Srf05_ICTIM;
 	uint16_t					Srf05_Echo_Pin;
+	uint16_t					Srf05_Trigger_Pin;
 	uint16_t					Srf05_TIM_IT_CC;
 	uint16_t					Srf05_IC_Channel;
 	uint8_t						Srf05_PreemptionPriority;
@@ -33,15 +35,18 @@ typedef struct Srf05_InitTypeDef{
 }Srf05_InitTypeDef;
 
 typedef struct Srf05_Data{
-	uint32_t 					PulseWidth;
-	double						Distance;
+	LOGIC								GetData_Flag;
+	uint32_t 						PulseWidth;
+	double							Distance;
 }Srf05_Data;
 
 /* Export function */
-void			Srf05_TriggerPinConfig(GPIO_TypeDef *GPIOx, uint16_t TriggerPin);
+void 			Core_Delay_Us(uint16_t count);
 void			Srf05_Initial(Srf05_InitTypeDef *psrf05);
-void			Srf05_StartDevice(void);
+void			Srf05_ClearFlag(Srf05_Data *psrf05);
+void			Srf05_SetFlag(Srf05_Data *psrf05);
 void			Srf05_ResetCounter(TIM_TypeDef *TIMx);
+void			Srf05_FirstInit(Srf05_Data *psrf05);
 
 
 

@@ -4,29 +4,10 @@ GPIO_InitTypeDef						Srf05_GPIO_Struct;
 TIM_TimeBaseInitTypeDef			Srf05_TIM_TimeBaseStruct;
 TIM_ICInitTypeDef						Srf05_TIM_ICStruct;
 NVIC_InitTypeDef						Srf05_NVIC_Struct;
-uint16_t										Srf05_TriggerPin = GPIO_Pin_0;
-GPIO_TypeDef								*Srf05_GPIO_TriggerPin;
 void Core_Delay_Us(uint16_t count)
 {
 	count *= 25;
 	while(count--);
-}
-/** @Brief: Parameters init for sensor
-**	@Args : Sensor variables structure, GPIOx, TIMx, Trigger input pin to start the sensor and Output pin trigger of sensor
-**	@Ret	: None
-**/
-void	Srf05_TriggerPinConfig(GPIO_TypeDef *GPIOx, uint16_t TriggerPin)
-{
-	RCC_GPIOxClockCmd(GPIOx, ENABLE);
-	
-	Srf05_GPIO_TriggerPin						= GPIOx;
-	Srf05_TriggerPin								= TriggerPin;
-	Srf05_GPIO_Struct.GPIO_Mode 		= GPIO_Mode_OUT;
-	Srf05_GPIO_Struct.GPIO_OType 		= GPIO_OType_PP;
-	Srf05_GPIO_Struct.GPIO_Pin			= TriggerPin;
-	Srf05_GPIO_Struct.GPIO_PuPd			= GPIO_PuPd_NOPULL;
-	Srf05_GPIO_Struct.GPIO_Speed		= GPIO_Speed_50MHz;
-	GPIO_Init(GPIOx,&Srf05_GPIO_Struct);
 }
 
 /** @Brief: Parameters init for sensor
@@ -35,14 +16,22 @@ void	Srf05_TriggerPinConfig(GPIO_TypeDef *GPIOx, uint16_t TriggerPin)
 **/
 void	Srf05_Initial(Srf05_InitTypeDef *psrf05)
 {
-	RCC_GPIOxClockCmd(psrf05->Srf05_GPIO,ENABLE);
+	RCC_GPIOxClockCmd(psrf05->Srf05_GPIO_Trigger,ENABLE);
+	RCC_GPIOxClockCmd(psrf05->Srf05_GPIO_Echo,ENABLE);
 	/* Config GPIO pin */
+	Srf05_GPIO_Struct.GPIO_Pin									= psrf05->Srf05_Trigger_Pin;
+	Srf05_GPIO_Struct.GPIO_Mode									= GPIO_Mode_OUT;
+	Srf05_GPIO_Struct.GPIO_OType								= GPIO_OType_PP;
+	Srf05_GPIO_Struct.GPIO_PuPd									= GPIO_PuPd_NOPULL;
+	Srf05_GPIO_Struct.GPIO_Speed								= GPIO_Speed_50MHz;
+	GPIO_Init(psrf05->Srf05_GPIO_Trigger,&Srf05_GPIO_Struct);
+	
 	Srf05_GPIO_Struct.GPIO_Mode									= GPIO_Mode_AF;
 	Srf05_GPIO_Struct.GPIO_Pin									= psrf05->Srf05_Echo_Pin;
 	Srf05_GPIO_Struct.GPIO_Speed								= GPIO_Speed_50MHz;
-	GPIO_Init(psrf05->Srf05_GPIO,&Srf05_GPIO_Struct);
+	GPIO_Init(psrf05->Srf05_GPIO_Echo,&Srf05_GPIO_Struct);
 	
-	GPIO_PinAFConfig(psrf05->Srf05_GPIO,GetPinSourceFromGPIOPin(psrf05->Srf05_Echo_Pin),GetAFFromTIM(psrf05->Srf05_ICTIM));
+	GPIO_PinAFConfig(psrf05->Srf05_GPIO_Echo,GetPinSourceFromGPIOPin(psrf05->Srf05_Echo_Pin),GetAFFromTIM(psrf05->Srf05_ICTIM));
 	
 	RCC_TIMxClockCmd(psrf05->Srf05_ICTIM,ENABLE);
 	/* Config time base struct */
@@ -59,7 +48,6 @@ void	Srf05_Initial(Srf05_InitTypeDef *psrf05)
 	TIM_ICInit(psrf05->Srf05_ICTIM,&Srf05_TIM_ICStruct);
 	
 	
-	
 	Srf05_NVIC_Struct.NVIC_IRQChannel						= GetIRQHandlerFromTIMxCC(psrf05->Srf05_ICTIM);
 	Srf05_NVIC_Struct.NVIC_IRQChannelPreemptionPriority = psrf05->Srf05_PreemptionPriority;
 	Srf05_NVIC_Struct.NVIC_IRQChannelSubPriority = psrf05->Srf05_SubPriority;
@@ -70,25 +58,27 @@ void	Srf05_Initial(Srf05_InitTypeDef *psrf05)
 	TIM_Cmd(psrf05->Srf05_ICTIM,ENABLE);
 }
 
-/** @Brief: Get data function
-**	@Args : srf05
-**	@Ret	: None
-**/
-void	Srf05_StartDevice(void)
-{
-	GPIO_ResetBits(Srf05_GPIO_TriggerPin,Srf05_TriggerPin);
-	Core_Delay_Us(5);
-	GPIO_SetBits(Srf05_GPIO_TriggerPin,Srf05_TriggerPin);
-	Core_Delay_Us(10);
-	GPIO_ResetBits(Srf05_GPIO_TriggerPin,Srf05_TriggerPin);
-}
-
 void	Srf05_ResetCounter(TIM_TypeDef *TIMx)
 {
 	TIM_SetCounter(TIMx,0);
 }
 
+void	Srf05_SetFlag(Srf05_Data *psrf05)
+{
+	psrf05->GetData_Flag = DUNG;
+}
 
+void	Srf05_ClearFlag(Srf05_Data *psrf05)
+{
+	psrf05->GetData_Flag = SAI;
+}
+
+void	Srf05_FirstInit(Srf05_Data *psrf05)
+{
+	psrf05->GetData_Flag = SAI;
+	psrf05->PulseWidth	 = 0;
+	psrf05->Distance		 = 0;
+}
 
 
 

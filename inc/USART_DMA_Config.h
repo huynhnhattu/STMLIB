@@ -24,8 +24,8 @@
 
 /* Export variables */
 extern    uint8_t 						U1_TxBuffer[100], U1_RxBuffer[47];
-extern		uint8_t							U2_TxBuffer[50], U2_RxBuffer[1000];
-extern    uint8_t 						U6_TxBuffer[200], U6_RxBuffer[200];
+extern		uint8_t							U2_TxBuffer[5], U2_RxBuffer[1000];
+extern    uint8_t 						U6_TxBuffer[500], U6_RxBuffer[1000];
 /* Export Function */
 void 						USART1_Config(uint32_t  BaudRate);
 void					  USART2_Config(uint32_t  BaudRate);

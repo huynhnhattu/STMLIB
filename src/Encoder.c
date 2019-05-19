@@ -131,32 +131,32 @@ void DirPinConfig(void)
 	GPIO_Init(Dir_GPIOx,&En_GPIO_Struct);
 }
 
-void M1_Forward(double duty)
+void M1_Forward(void)
 {
-	duty = fabs(duty);
 	GPIO_SetBits(Dir_GPIOx,Dir_GPIO_Pin_M1);
-	PWM_TIMx->CCR1 = (uint16_t)((duty * Frequency_20KHz) / 100);
 }
 
-void M1_Backward(double duty)
+void M1_Backward(void)
 {
-	duty = fabs(duty);
 	GPIO_ResetBits(Dir_GPIOx,Dir_GPIO_Pin_M1);
-	PWM_TIMx->CCR1 = (uint16_t)((duty * Frequency_20KHz) / 100);
 }
 
-void M2_Forward(double duty)
+void M2_Forward(void)
 {
-	duty = fabs(duty);
 	GPIO_SetBits(Dir_GPIOx,Dir_GPIO_Pin_M2);
-	PWM_TIMx->CCR2 = (uint16_t)((duty * Frequency_20KHz) / 100);
 }
 
-void M2_Backward(double duty)
+void M2_Backward(void)
 {
-	duty = fabs(duty);
 	GPIO_ResetBits(Dir_GPIOx,Dir_GPIO_Pin_M2);
-	PWM_TIMx->CCR2 = (uint16_t)((duty * Frequency_20KHz) / 100);
+}
+
+void Robot_Run(double duty_right, double duty_left)
+{
+	duty_right = fabs(duty_right);
+	duty_left  = fabs(duty_left);
+	PWM_TIMx->CCR1 = (uint16_t)((duty_right * Frequency_20KHz) / 100);
+	PWM_TIMx->CCR2 = (uint16_t)((duty_left * Frequency_20KHz) / 100);
 }
 
 void Stop_Motor(void)
@@ -165,28 +165,28 @@ void Stop_Motor(void)
 	PWM_TIMx->CCR2   = 0;
 }
 
-void Robot_Forward(double duty_right, double duty_left)
+void Robot_Forward(void)
 {
-	M1_Forward(duty_right);
-	M2_Forward(duty_left);
+	M1_Forward();
+	M2_Forward();
 }
 
-void Robot_Backward(double duty_right, double duty_left)
+void Robot_Backward(void)
 {
-	M1_Backward(duty_right);
-	M2_Backward(duty_left);
+	M1_Backward();
+	M2_Backward();
 }
 
-void Robot_Spin_ClockWise(double duty_right, double duty_left)
+void Robot_Clockwise(void)
 {
-	M1_Backward(duty_right);
-	M2_Forward(duty_left);
+	M1_Backward();
+	M2_Forward();
 }
 
-void Robot_Spin_AntiClockWise(double duty_right, double duty_left)
+void Robot_AntiClockwise(void)
 {
-	M1_Forward(duty_right);
-	M2_Backward(duty_left);
+	M1_Forward();
+	M2_Backward();
 }
 
 void Encoder_Config(void)
@@ -195,6 +195,7 @@ void Encoder_Config(void)
 	M2_Encoder_Config();
 	PWM_Config(Frequency_20KHz);
 	DirPinConfig();
+	Robot_Forward();
 }
 
 

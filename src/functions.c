@@ -20,12 +20,15 @@ trapf 						In1_NB,In1_PB,In2_NE,In2_PO;
 void	Status_ParametersInit(Status *pstt)
 {
 	pstt->GPS_Coordinate_Reveived = Check_NOK;
-	pstt->GPS_Coordinate_Sending  = Check_NOK;
 	pstt->IMU_FirstSetAngle				= Check_NOK;
 	pstt->Veh_Sample_Time					= Check_NOK;
 	pstt->Veh_Send_Data						= Check_NOK;
 	pstt->Veh_SendData_Flag				= Check_OK;
 	pstt->Srf05_TimeOut_Flag			= Check_NOK;
+	pstt->Veh_Timer_Finish				= Check_NOK;
+	pstt->IMU_Calib_Finish				= Check_NOK;
+	pstt->Veh_Send_Parameters			= Check_NOK;
+	pstt->Veh_Auto_Flag						= Check_NOK;
 }
 
 void	Status_UpdateStatus(Check_Status *pstt, Check_Status stt)
@@ -87,6 +90,7 @@ void PID_ParametersInitial(DCMotor *ipid)
 	ipid->Enc = 0;
 	ipid->PreEnc = 0;
 	ipid->OverFlow = 0;
+	ipid->Change_State = 1;
 }
 
 /** @brief  : Set velocity update for motor
@@ -128,27 +132,39 @@ void	PID_ResetEncoder(DCMotor *ipid)
 	ipid->OverFlow = 1;
 }
 
+/** @brief  : PID reset PID
+**	@agr    : void
+**	@retval : None
+**/
+void	PID_ResetPID(DCMotor *ipid)
+{
+	ipid->Pre_PID = 0;
+	ipid->Pre_Error = 0;
+	ipid->Pre2_Error = 0;
+}
+
 /** @brief  : PID Save parameters to interflash memory
 **	@agr    : void
 **	@retval : None
 **/
 void	PID_SavePIDParaToFlash(FlashMemory *pflash, DCMotor *M1, DCMotor *M2)
 {
-	pflash->Length += ToChar(M1->Kp,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->Length = 0;
+	pflash->Length += ToChar(M1->Kp,&pflash->WriteInBuffer[Flash.Length],6);
 	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
-	pflash->Length += ToChar(M1->Ki,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->Length += ToChar(M1->Ki,&pflash->WriteInBuffer[Flash.Length],6);
 	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
-	pflash->Length += ToChar(M1->Kd,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->Length += ToChar(M1->Kd,&pflash->WriteInBuffer[Flash.Length],6);
 	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
-	pflash->Length += ToChar(M2->Kp,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->Length += ToChar(M2->Kp,&pflash->WriteInBuffer[Flash.Length],6);
 	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
-	pflash->Length += ToChar(M2->Ki,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->Length += ToChar(M2->Ki,&pflash->WriteInBuffer[Flash.Length],6);
 	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
-	pflash->Length += ToChar(M2->Kd,&pflash->WriteInBuffer[Flash.Length]);
+	pflash->Length += ToChar(M2->Kd,&pflash->WriteInBuffer[Flash.Length],6);
 	pflash->WriteInBuffer[pflash->Length++] = 0x0D;
 	pflash->WriteInBuffer[pflash->Length++] = 0x0A;
+	EraseMemory(FLASH_Sector_7);
 	WriteToFlash(pflash,FLASH_Sector_7,FLASH_PIDPara_BaseAddr);
-	pflash->Length = 0;
 }
 
 /** @brief  : Convert rad to degree
@@ -173,6 +189,19 @@ double ToRadian(double degree)
 	return result;
 }
 
+/** @brief  : Calculate length of a line (end with 0x0D, 0x0A)
+**  @agr    : Input buffer
+**  @retval : Length
+**/
+int	LengthOfLine(uint8_t *inputmessage)
+{
+	int length = 0;
+	while((inputmessage[length] != 0x0D) && (inputmessage[length + 1] != 0x0A))
+	{
+		length++;
+	}
+	return length;
+}
 /* ----------------------- Timer functions -----------------------------------*/
 void	Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send)
 {
@@ -181,7 +210,7 @@ void	Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send)
 	ptime->Srf05_Count	= 0;
 	ptime->Sample_Time = Sample;
 	ptime->Send_Time = Send;
-	ptime->Srf05_Sample_Time = 30000;
+	ptime->Srf05_Sample_Time = 20000;
 }
 
 void	Time_SampleTimeUpdate(Time *ptime, uint32_t Sample)
@@ -201,13 +230,17 @@ void	Time_SendTimeUpdate(Time *ptime, uint32_t TSend)
 /*------------------------ Vehicle Status Function ----------------------------*/
 void	Veh_ParametersInit(Vehicle *pveh)
 {
-	pveh->Max_Velocity = 0;
+	pveh->Max_Velocity = ToRPM(1);
 	pveh->ManualCtrlKey = 0;
 	pveh->Manual_Angle = 0;
 	pveh->Manual_Velocity = 0;
 	pveh->Mode = KeyBoard_Mode;
 	pveh->LengthOfCommands = 0;
 	pveh->SendData_Ind = 0;
+	pveh->Distance = 0;
+	pveh->TotalDistance = 0;
+	pveh->Srf05_Selected_Sensor = 1;
+	pveh->Veh_Error = Veh_NoneError;
 }
 
 void	Veh_UpdateVehicleFromKey(Vehicle *pveh)
@@ -252,6 +285,16 @@ Check_Status Veh_GetCommandMessage(char *inputmessage, char result[50][30])
 	GetMessageInfo(inputmessage,result,',');
 	return IsCorrectMessage((uint8_t*)&inputmessage[1],index - 3,inputmessage[index - 2],inputmessage[index - 1]);
 }
+
+void	Veh_CheckStateChange(DCMotor *ipid, uint8_t State)
+{
+	if(ipid->Change_State != State)
+	{
+		PID_ResetPID(ipid);
+		ipid->Change_State = State;
+	}
+}
+
 
 /* ----------------------- GPS function ---------------------------------------*/
 /** @brief  : Round value
@@ -298,6 +341,8 @@ void GetMessageInfo(char *inputmessage, char result[50][30], char character)
 		index++;
 	}
 }
+
+
 
 /** @brief  : Get double value from string or array
 **  @agr    : Input string or array
@@ -378,7 +423,7 @@ Check_Status IsDouble(double value)
 **  @agr    : Input value, result buffer
 **  @retval : None 
 **/
-uint8_t ToChar(double value, uint8_t *pBuffer)
+uint8_t ToChar(double value, uint8_t *pBuffer, int NbAfDot)
 {
 	uint32_t BefD;
 	double AftD;
@@ -419,13 +464,13 @@ uint8_t ToChar(double value, uint8_t *pBuffer)
 	{
 		pBuffer[strleng] = (uint8_t)'.';
 		strleng++;
-		for (int i = 0; i < 6; i++)
+		for (int i = 0; i < NbAfDot; i++)
 		{
 			AftD *= 10;
 			pBuffer[strleng + i] = (uint8_t)AftD + 48;
 			AftD = AftD - (uint8_t)AftD;
 		}
-		strleng += 6;
+		strleng += NbAfDot;
 	}
 	return strleng;
 }
@@ -515,9 +560,11 @@ Check_Status IsCorrectMessage(uint8_t *inputmessage, int length, uint8_t byte1, 
 **/
 Check_Status StringHeaderCompare(char *s1, char header[])
 {
-	for(int i = 0; i < 6; i++)
+	int i = 0;
+	while(s1[i] != 0)
 	{
 		if(s1[i] != header[i]) return Check_NOK;
+		i++;
 	}
 	return Check_OK;
 }
@@ -543,7 +590,7 @@ Command_State		GetNbOfReceiveHeader(char *input)
 	else if(StringHeaderCompare(input,"$AUCON"))
 		return Auto_Config;
 	else if(StringHeaderCompare(input,"$VPLAN"))
-		return Path_Plan;
+		return Path_Plan; 	
 	else if(StringHeaderCompare(input,"$FSAVE"))
 		return Flash_Save;
 	else if(StringHeaderCompare(input,"$KCTRL"))
@@ -555,17 +602,14 @@ Command_State		GetNbOfReceiveHeader(char *input)
 **  @agr    : Result and status
 **  @retval : lenght 
 **/
-int FeedBack(uint8_t *outputmessage, char status)
+int FeedBack(uint8_t *outputmessage, char inputstring[])
 {
 	int i = 0;
-	outputmessage[i++] 	= (uint8_t)'$';
-	outputmessage[i++]  = (uint8_t)'S';
-	outputmessage[i++]  = (uint8_t)'I';
-	outputmessage[i++]  = (uint8_t)'N';
-	outputmessage[i++]  = (uint8_t)'F';
-	outputmessage[i++]  = (uint8_t)'O';
-	outputmessage[i++]  = (uint8_t)',';
-	outputmessage[i++]  = (uint8_t)status;
+	while(inputstring[i] != 0)
+	{
+		outputmessage[i] = inputstring[i];
+		i++;
+	}
 	outputmessage[i++]  = 0x0D;
 	outputmessage[i++]  = 0x0A;
 	return i;
@@ -660,7 +704,7 @@ double GPS_LLToDegree(double LL)
 	temp = (double)(degree * 100);
 	minute = LL - temp;
 	minute = minute / 60;
-	return (degree + minute);
+	return (degree +  minute);
 }
 
 /** @brief  : Initial value for GPS functions
@@ -699,15 +743,14 @@ void	GPS_UpdatePathYaw(GPS *pgps)
 **/
 void	GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage)
 {
-	char Temp_Message[50][30] = {0};
-	GetMessageInfo((char*)inputmessage,Temp_Message,',');
-	pgps->NbOfWayPoints = GetValueFromString(&Temp_Message[1][0]);
+	GetMessageInfo((char*)inputmessage,pgps->TempBuffer,',');
+	pgps->NbOfWayPoints = GetValueFromString(&pgps->TempBuffer[1][0]);
 	for(int i = 0; i < pgps->NbOfWayPoints; i++)
 	{
-		pgps->Latitude 			= GetValueFromString(&Temp_Message[i * 2 + 2][0]);
-		pgps->Longitude			= GetValueFromString(&Temp_Message[i * 2 + 3][0]);
+		pgps->Latitude 			= GetValueFromString(&pgps->TempBuffer[i * 2 + 2][0]);
+		pgps->Longitude			= GetValueFromString(&pgps->TempBuffer[i * 2 + 3][0]);
 		GPS_LatLonToUTM(pgps);
-		pgps->Path_X[i]			= pgps->CorX;
+		pgps->Path_X[i]			= pgps->CorX;	
 		pgps->Path_Y[i]			= pgps->CorY;
 	}
 	GPS_UpdatePathYaw(pgps);
@@ -719,13 +762,18 @@ void	GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage)
 **/
 void	GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash)
 {
+	pflash->Length = 0;
+	pflash->Length += ToChar(pgps->NbOfWayPoints,&pflash->WriteInBuffer[pflash->Length],1);
+	pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
 	for(int i = 0; i < pgps->NbOfWayPoints; i++)
 	{
-		pflash->Length += ToChar(pgps->Path_X[i],&pflash->WriteInBuffer[pflash->Length]);
+		pflash->Length += ToChar(pgps->Path_X[i],&pflash->WriteInBuffer[pflash->Length],6);
+		pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
+		pflash->Length += ToChar(pgps->Path_Y[i],&pflash->WriteInBuffer[pflash->Length],6);
 		pflash->WriteInBuffer[pflash->Length++] = (uint8_t)',';
 	}
-	WriteToFlash(pflash,FLASH_Sector_7,FLASH_GPSPara_BaseAddr);
-	pflash->Length = 0;
+	EraseMemory(FLASH_Sector_6);
+	WriteToFlash(pflash,FLASH_Sector_6,FLASH_GPSPara_BaseAddr);
 }
 
 /** @brief  : Function get lat lon value from GNGLL message
@@ -747,9 +795,10 @@ void GPS_GetLatFromString(GPS *pgps, char *inputmessage)
 		s2 += (inputmessage[i] - 48) * temp;
 		temp /= 10;
 	}
-	s2 /= 10000;
+	s2 /= 100000;
 	pgps->Latitude = GPS_LLToDegree(s1 + s2);
 }
+
 
 /** @brief  : Function get lat lon value from GNGLL message
 **  @agr    : String value received from message
@@ -762,10 +811,10 @@ void GPS_GetLonFromString(GPS *pgps, char *inputmessage)
 	for(int i = 0; i < 5; i++)
 	{
 		s1 += (inputmessage[i] - 48) * temp;
-		s2 += (inputmessage[i + 5] - 48) * temp;
+		s2 += (inputmessage[i + 6] - 48) * temp;
 		temp /= 10;
 	}
-	s2 /= 10000;
+	s2 /= 100000;
 	pgps->Longitude = GPS_LLToDegree(s1 + s2);
 }
 
@@ -815,24 +864,125 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime)
 	pgps->Pre_CorY = pgps->CorY;
 }
 
-Check_Status	GPS_GetMessage(char header[5], char *inputmessage,char result[50][30])
+/** @brief  : Header compare GPS message
+**  @agr    : Input header
+**  @retval : Check status
+**/
+Check_Status	GPS_HeaderCompare(uint8_t *s1, char Header[5])
+{
+	for(int i = 0; i < 5; i++)
+	{
+		if(s1[i] != (uint8_t)Header[i])
+			return Check_NOK;
+	}
+	return Check_OK;
+}
+
+/** @brief  : Get message from NMEA protocol
+**  @agr    : GPS and Inputmessage
+**  @retval : None
+**/
+Vehicle_Error	GPS_GetLLQMessage(GPS *pgps, uint8_t *inputmessage,	char result[50][30])
+{
+	int Message_Index = 0, GxGLL_Index = 0, GxGGA_Index = 0, Length = 0;
+	while(inputmessage[Message_Index] != 0)
+	{
+		if(inputmessage[Message_Index] == (uint8_t)'$')
+		{
+			if((GPS_HeaderCompare(&inputmessage[Message_Index + 1],"GNGGA")) || (GPS_HeaderCompare(&inputmessage[Message_Index + 1],"GPGGA")))
+			{
+				GxGGA_Index = Message_Index;
+				Message_Index++;
+			}
+			else if((GPS_HeaderCompare(&inputmessage[Message_Index + 1],"GNGLL")) || (GPS_HeaderCompare(&inputmessage[Message_Index + 1],"GPGLL")))
+			{
+				GxGLL_Index = Message_Index;
+				break;
+			}
+			else Message_Index++;
+		}
+		else Message_Index++;
+		if(Message_Index > 1000)
+		{
+			return Veh_ReadMessage_Err;
+		}
+	}
+	GetMessageInfo((char*)&inputmessage[GxGLL_Index], result, ',');
+	if(IsCorrectMessage(&inputmessage[GxGLL_Index + 1], LengthOfLine(&inputmessage[GxGLL_Index + 1]) - 3, (uint8_t)result[7][2], (uint8_t)result[7][3]))
+	{
+		if(IsValidData(result[6][0]))
+		{
+			GPS_GetLatFromString(&GPS_NEO,&result[1][0]);
+			GPS_GetLonFromString(&GPS_NEO,&result[3][0]);
+			GPS_LatLonToUTM(&GPS_NEO);
+		}
+		else return Veh_InvalidGxGLLMessage_Err;
+	}
+	else return Veh_GxGLLCheckSum_Err;
+	Length = LengthOfLine(&inputmessage[GxGGA_Index]);
+	GetMessageInfo((char*)&inputmessage[GxGGA_Index], result, ',');
+	if(IsCorrectMessage(&inputmessage[GxGGA_Index + 1], Length - 4, inputmessage[GxGGA_Index + Length - 2], inputmessage[GxGGA_Index + Length - 1]))
+	{
+		pgps->GPS_Quality = (GPS_Quality)GetValueFromString(&result[6][0]);
+	}
+	else return Veh_GxGGACheckSum_Err;
+	return Veh_NoneError;
+}
+
+/** @brief  : Get message from GNGLL/GPGLL 
+**  @agr    : GPS and Inputmessage
+**  @retval : None
+**/
+Check_Status	GPS_GetCoordinateMessage(uint8_t *inputmessage, char result[50][30])
 {
 	int index = 0;
+	Check_Status flag = Check_NOK;
 	while(inputmessage[index] != 0)
 	{
 		if(inputmessage[index] == '$')
 		{
-			if((inputmessage[index + 1] == header[0]) && (inputmessage[index + 2] == header[1]) && (inputmessage[index + 3] == header[2]) && (inputmessage[index + 4] == header[3]) && (inputmessage[index + 5] == header[4]))
+			if(((inputmessage[index + 1] == 'G') && (inputmessage[index + 2] == 'N') && (inputmessage[index + 3] == 'G') && (inputmessage[index + 4] == 'L') && (inputmessage[index + 5] == 'L')) || ((inputmessage[index + 1] == 'G') && (inputmessage[index + 2] == 'P') && (inputmessage[index + 3] == 'G') && (inputmessage[index + 4] == 'L') && (inputmessage[index + 5] == 'L')))
 			{
+				flag = Check_OK;
 				break;
 			}
 			else index++;
 		}
 		else index++;
 	}
-	GetMessageInfo(&inputmessage[index],result,',');
+	if(flag)
+		GetMessageInfo((char*)&inputmessage[index],result,',');
+	else return Check_NOK;
 	return IsCorrectMessage((uint8_t*)&inputmessage[index + 1], 46,(uint8_t)result[7][2], (uint8_t)result[7][3]);
 }
+
+/** @brief  : Get quality value from GNGGA/GPGGA message
+**  @agr    : GPS and Inputmessage
+**  @retval : None
+**/
+Check_Status GPS_GetQualityFromString(GPS *pgps, uint8_t *inputmessage, char result[50][30]) 
+{
+	int index = 0;
+	Check_Status flag = Check_NOK;
+	while(inputmessage[index] != 0)
+	{
+		if(inputmessage[index] == '$')
+		{
+			if(((inputmessage[index + 1] == 'G') && (inputmessage[index + 2] == 'N') && (inputmessage[index + 3] == 'G') && (inputmessage[index + 4] == 'G') && (inputmessage[index + 5] == 'A')) || ((inputmessage[index + 1] == 'G') && (inputmessage[index + 2] == 'P') && (inputmessage[index + 3] == 'G') && (inputmessage[index + 4] == 'G') && (inputmessage[index + 5] == 'A')))
+			{
+				flag = Check_OK;
+				break;
+			}
+			else index++;
+		}
+		else index++;
+	}
+	if(flag)
+		GetMessageInfo((char*)&inputmessage[index],result,',');
+	else return Check_NOK;
+	return IsCorrectMessage(&inputmessage[index + 1],LengthOfLine(&inputmessage[index + 1]) - 3, (uint8_t)result[14][5], (uint8_t)result[14][6]);
+}
+
 /*-------------------- Fuzzy control -----------------------*/
 /* Variables of fuzzy control block */
 
@@ -1274,14 +1424,17 @@ void EraseMemory(uint32_t Flash_Sector)
 **/
 void WriteToFlash(FlashMemory *pflash, uint32_t FLASH_Sector, uint32_t FLASH_BaseAddr)
 {
-	uint32_t pInput[50] = {0};
-	pInput[0] = Convert4BytesToWordData(pflash->WriteInBuffer,&pInput[1],pflash->Length);
-	FLASH_Unlock();
-	FLASH_ProgramWord(FLASH_BaseAddr,pInput[0]);
-	FLASH_BaseAddr += 4;
-	for(int i = 0; i < pInput[0]; i++)
+	for(int i = 0; i < 100; i++)
 	{
-		FLASH_ProgramWord(FLASH_BaseAddr,pInput[i + 1]);
+		pflash->WriteIn32bBuffer[i] = 0;
+	}
+	pflash->WriteIn32bBuffer[0] = Convert4BytesToWordData(pflash->WriteInBuffer,&pflash->WriteIn32bBuffer[1],pflash->Length);
+	FLASH_Unlock();
+	FLASH_ProgramWord(FLASH_BaseAddr,pflash->WriteIn32bBuffer[0]);
+	FLASH_BaseAddr += 4;
+	for(int i = 0; i < pflash->WriteIn32bBuffer[0]; i++)
+	{
+		FLASH_ProgramWord(FLASH_BaseAddr,pflash->WriteIn32bBuffer[i + 1]);
 		FLASH_BaseAddr += 4;
 	}
 	FLASH_Lock();

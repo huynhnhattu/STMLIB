@@ -7,8 +7,8 @@ NVIC_InitTypeDef									US_NVIC_Struct;
 
 /* Variables */
 uint8_t 						U1_TxBuffer[100], U1_RxBuffer[47];
-uint8_t							U2_TxBuffer[50],  U2_RxBuffer[1000];
-uint8_t							U6_TxBuffer[200], U6_RxBuffer[200];
+uint8_t							U2_TxBuffer[5],  U2_RxBuffer[1000];
+uint8_t							U6_TxBuffer[500], U6_RxBuffer[1000];
 /*----- USART1 configuration ---------*/
 void USART1_Config(uint32_t  BaudRate)
 {
@@ -120,7 +120,7 @@ void USART2_Config(uint32_t  BaudRate)
 	
 	//--------Config DMA USART Tx----------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_4;
-	US_DMA_Struct.DMA_BufferSize							= 50;
+	US_DMA_Struct.DMA_BufferSize							= 5;
 	US_DMA_Struct.DMA_Mode 										= DMA_Mode_Normal;
 	US_DMA_Struct.DMA_DIR											= DMA_DIR_MemoryToPeripheral;
 	US_DMA_Struct.DMA_Memory0BaseAddr					= (uint32_t)&U2_TxBuffer;
@@ -199,7 +199,7 @@ void USART6_Config(uint32_t BaudRate)
 	NVIC_Init(&US_NVIC_Struct);
 	//--------Config DMA USART Tx----------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_5;
-	US_DMA_Struct.DMA_BufferSize							= 200;
+	US_DMA_Struct.DMA_BufferSize							= 500;
 	US_DMA_Struct.DMA_Mode 										= DMA_Mode_Normal;
 	US_DMA_Struct.DMA_DIR											= DMA_DIR_MemoryToPeripheral;
 	US_DMA_Struct.DMA_Memory0BaseAddr					= (uint32_t)&U6_TxBuffer;
@@ -216,7 +216,7 @@ void USART6_Config(uint32_t BaudRate)
 	DMA_Init(DMA2_Stream6,&US_DMA_Struct);
 	//-----------Config DMA USART Rx------------------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_5;
-	US_DMA_Struct.DMA_BufferSize							= 200;
+	US_DMA_Struct.DMA_BufferSize							= 1000;
 	US_DMA_Struct.DMA_Mode 										= DMA_Mode_Normal;
 	US_DMA_Struct.DMA_DIR											= DMA_DIR_PeripheralToMemory;
 	US_DMA_Struct.DMA_Memory0BaseAddr					= (uint32_t)&U6_RxBuffer;

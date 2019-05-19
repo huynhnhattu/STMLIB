@@ -44,15 +44,16 @@
 #define         Frequency_20KHz							  5000
 /* Data Types */
 /* Export Functions */
-void M1_Forward(double duty);
-void M1_Backward(double duty);
-void M2_Forward(double duty);
-void M2_Backward(double duty);
+void M1_Forward(void);
+void M1_Backward(void);
+void M2_Forward(void);
+void M2_Backward(void);
 void Stop_Motor(void);
-void Robot_Forward(double duty_right, double duty_left);
-void Robot_Backward(double duty_right, double duty_left);
-void Robot_Spin_ClockWise(double duty_right, double duty_left);
-void Robot_Spin_AntiClockWise(double duty_right, double duty_left);
+void Robot_Forward(void);
+void Robot_Backward(void);
+void Robot_Clockwise(void);
+void Robot_AntiClockwise(void);
+void Robot_Run(double duty_right, double duty_left);
 void Encoder_Config(void);
 
 
