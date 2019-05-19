@@ -16,6 +16,17 @@ Vehicle						Veh;
 double 						NB,NM,NS,ZE,PS,PM,PB;
 trimf 						In1_NS,In1_ZE,In1_PS,In2_ZE;
 trapf 						In1_NB,In1_PB,In2_NE,In2_PO;
+Error							Veh_Error;
+/*----- Error functions -----------------------------------*/
+void	Error_ResetIndex(Error *perror)
+{
+	perror->Error_Index = 0;
+}
+
+void	Error_AppendError(Error *perror, Vehicle_Error Code)
+{
+	perror->Error_Buffer[perror->Error_Index++] = Code;
+}
 /*----- Init, and function to config vehicle status -------*/
 void	Status_ParametersInit(Status *pstt)
 {
@@ -275,15 +286,14 @@ void	Veh_UpdateMaxVelocity(Vehicle *pveh, double MaxVelocity)
 	pveh->Max_Velocity = MaxVelocity;
 }
 
-Check_Status Veh_GetCommandMessage(char *inputmessage, char result[50][30])
+Vehicle_Error	Veh_GetCommandMessage(uint8_t *inputmessage, char result[50][30])
 {
-	int index = 0;
-	while((inputmessage[index] != 0x0D) && (inputmessage[index + 1] != 0x0A) && (inputmessage[index] != 0))
-	{
-		index++;
-	}
-	GetMessageInfo(inputmessage,result,',');
-	return IsCorrectMessage((uint8_t*)&inputmessage[1],index - 3,inputmessage[index - 2],inputmessage[index - 1]);
+	int length = LengthOfLine(inputmessage);
+	GetMessageInfo((char*)inputmessage,result,',');
+	if(IsCorrectMessage((uint8_t*)&inputmessage[1],length - 3,inputmessage[length - 2],inputmessage[length - 1]))
+		return Veh_NoneError;
+	else
+		return Veh_CommandMessageCheckSum_Err;
 }
 
 void	Veh_CheckStateChange(DCMotor *ipid, uint8_t State)
@@ -907,25 +917,34 @@ Vehicle_Error	GPS_GetLLQMessage(GPS *pgps, uint8_t *inputmessage,	char result[50
 			return Veh_ReadMessage_Err;
 		}
 	}
-	GetMessageInfo((char*)&inputmessage[GxGLL_Index], result, ',');
-	if(IsCorrectMessage(&inputmessage[GxGLL_Index + 1], LengthOfLine(&inputmessage[GxGLL_Index + 1]) - 3, (uint8_t)result[7][2], (uint8_t)result[7][3]))
+	if(GxGLL_Index != 0)
 	{
-		if(IsValidData(result[6][0]))
+		Length = LengthOfLine(&inputmessage[GxGLL_Index]);
+		GetMessageInfo((char*)&inputmessage[GxGLL_Index], result, ',');
+		if(IsCorrectMessage(&inputmessage[GxGLL_Index + 1], Length - 4, inputmessage[GxGLL_Index + Length - 2], inputmessage[GxGLL_Index + Length - 1]))
 		{
-			GPS_GetLatFromString(&GPS_NEO,&result[1][0]);
-			GPS_GetLonFromString(&GPS_NEO,&result[3][0]);
-			GPS_LatLonToUTM(&GPS_NEO);
+			if(IsValidData(result[6][0]))
+			{
+				GPS_GetLatFromString(&GPS_NEO,&result[1][0]);
+				GPS_GetLonFromString(&GPS_NEO,&result[3][0]);
+				GPS_LatLonToUTM(&GPS_NEO);
+			}
+			else return Veh_InvalidGxGLLMessage_Err;
 		}
-		else return Veh_InvalidGxGLLMessage_Err;
+		else return Veh_GxGLLCheckSum_Err;
 	}
-	else return Veh_GxGLLCheckSum_Err;
-	Length = LengthOfLine(&inputmessage[GxGGA_Index]);
-	GetMessageInfo((char*)&inputmessage[GxGGA_Index], result, ',');
-	if(IsCorrectMessage(&inputmessage[GxGGA_Index + 1], Length - 4, inputmessage[GxGGA_Index + Length - 2], inputmessage[GxGGA_Index + Length - 1]))
+	else return Veh_ReadGxGLLMessage_Err;
+	if(GxGGA_Index != 0)
 	{
-		pgps->GPS_Quality = (GPS_Quality)GetValueFromString(&result[6][0]);
+		Length = LengthOfLine(&inputmessage[GxGGA_Index]);
+		GetMessageInfo((char*)&inputmessage[GxGGA_Index], result, ',');
+		if(IsCorrectMessage(&inputmessage[GxGGA_Index + 1], Length - 4, inputmessage[GxGGA_Index + Length - 2], inputmessage[GxGGA_Index + Length - 1]))
+		{
+			pgps->GPS_Quality = (GPS_Quality)GetValueFromString(&result[6][0]);
+		}
+		else return Veh_GxGGACheckSum_Err;
 	}
-	else return Veh_GxGGACheckSum_Err;
+	else return Veh_ReadGxGGAMessage_Err;
 	return Veh_NoneError;
 }
 

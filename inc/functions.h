@@ -12,12 +12,13 @@ typedef enum
 
 typedef enum{
 	Veh_NoneError 				= 0,
-	Veh_ReadMessage_Err,
-	Veh_ReadGxGLLMessage_Err,		
+	Veh_ReadMessage_Err,        //Over flow Rx buffer
+	Veh_ReadGxGLLMessage_Err,		//
 	Veh_ReadGxGGAMessage_Err,
 	Veh_GxGLLCheckSum_Err,
 	Veh_GxGGACheckSum_Err,
 	Veh_InvalidGxGLLMessage_Err,
+	Veh_CommandMessageCheckSum_Err,
 }Vehicle_Error;
 
 typedef struct Status{
@@ -78,6 +79,11 @@ typedef enum{
 	Sensor_Back,
 }Srf05_Sensor_Number;
 
+typedef struct Error{
+	uint8_t			Error_Buffer[20];
+	uint8_t			Error_Index;
+}Error;
+
 typedef struct Time{
 	uint32_t		Sample_Time;
 	uint32_t    Time_Sample_Count;
@@ -96,7 +102,7 @@ typedef	struct  DCMotor{
 	uint16_t 	PreEnc;
 	uint8_t		OverFlow;
 	double		Set_Vel;
-	double 		Current_Vel;
+	double 		Current_Vel;		
 	uint8_t		Change_State;
 	double		*SampleTime;
 	double		Pre_PID;
@@ -208,16 +214,20 @@ extern IMU												Mag;
 extern Message  									U2,U6;
 extern Time												Timer;
 extern FlashMemory 								Flash;
+extern Error											Veh_Error;
 /*--------Export Function------------------------- */
 void 	 					LedTest(void);     																				// Use 4 leds on board to test code
 double 					ToDegree(double rad); 																		// Convert rad to degree
 double 					ToRadian(double degree); 																	// Convert degree to rad
-uint8_t 				ToChar(double value, uint8_t *pBuffer,int NbAfDot); 									// Convert double value to char array
+uint8_t 				ToChar(double value, uint8_t *pBuffer,int NbAfDot); 			// Convert double value to char array
 uint8_t					ToHex(uint8_t input);
 double					ToRPM(double vel);
 double					fix(double value);
 double 					Pi_To_Pi(double angle);
 int							LengthOfLine(uint8_t *inputmessage);
+/*------------ Error update --=========-----------*/
+void						Error_ResetIndex(Error *perror);	
+void						Error_AppendError(Error *perror, Vehicle_Error Error_Code);
 /*------------ Vehicle Status update -------------*/
 void						Status_ParametersInit(Status *pstt);
 void						Status_UpdateStatus(Check_Status *pstt, Check_Status stt);
@@ -233,7 +243,7 @@ void						Veh_GetManualCtrlKey(Vehicle *pveh, char key);
 void						Veh_UpdateVehicleFromKey(Vehicle *pveh);
 void						Veh_CheckStateChange(DCMotor *ipid, uint8_t State);
 void						Veh_UpdateMaxVelocity(Vehicle *pveh, double MaxVelocity);
-Check_Status		Veh_GetCommandMessage(char *inputmessage, char result[50][30]);
+Vehicle_Error		Veh_GetCommandMessage(uint8_t *inputmessage, char result[50][30]);
 /*------------ PID Function ----------------------*/
 void						PID_UpdateEnc(DCMotor *ipid, uint16_t PulseCount);
 void						PID_SavePIDParaToFlash(FlashMemory *pflash, DCMotor *M1, DCMotor *M2);
