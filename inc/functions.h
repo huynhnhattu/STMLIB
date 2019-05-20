@@ -147,6 +147,7 @@ typedef struct GPS{
 	double 		CorX;
 	double 		CorY;
 	IMU				*Angle;
+	double		K;
 	Check_Status			Goal_Flag;
 	double		Latitude;
 	double    Longitude;
@@ -196,7 +197,6 @@ typedef struct FlashMemory{
 #define						K2															4/pi
 #define						K3															1
 #define						Wheel_Radius 										0.085
-#define						K																0.5
 #define						IMU_AngleIndex									17
 #define						FLASH_ProgramType_Byte					VoltageRange_1
 #define						FLASH_ProgramType_HalfWord			VoltageRange_2
@@ -280,6 +280,7 @@ void						GPS_ClearPathBuffer(GPS *pgps);
 void						GPS_UpdatePathYaw(GPS *pgps);
 void						GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage);
 void						GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash);
+void						GPS_UpdateParameters(GPS *pgps, double K);
 Check_Status		GPS_HeaderCompare(uint8_t *s1, char Header[5]);
 Check_Status		GPS_GetQualityFromString(GPS *pgps, uint8_t *inputmessage, char result[50][30]);
 Vehicle_Error		GPS_GetLLQMessage(GPS *pgps, uint8_t *inputmessage,char result[50][30]);

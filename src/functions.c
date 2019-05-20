@@ -760,6 +760,7 @@ void GPS_ParametersInit(GPS *pgps)
 	pgps->Pre_CorY = 0;
 	pgps->Goal_Flag = Check_NOK;
 	pgps->GPS_Error = Veh_NoneError;
+	pgps->K = 0.5;
 }
 
 /** @brief  : GPS updates path yaw 
@@ -792,6 +793,15 @@ void	GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage)
 	pgps->CorY = 0;
 	pgps->Latitude = 0;
 	pgps->Longitude = 0;
+}
+
+/** @brief  : GPS update K 
+**  @agr    : GPS and K
+**  @retval : none
+**/
+void	GPS_UpdateParameters(GPS *pgps, double K)
+{
+	pgps->K = K;
 }
 
 /** @brief  : Save GPS path coordinate to internal flash memory
@@ -902,7 +912,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime)
 	if(goal_radius <= 1)
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
 	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - Pi_To_Pi(pgps->Angle->Angle));
-	thetad = atan2(K * efa,pgps->Robot_Velocity);
+	thetad = atan2(pgps->K * efa,pgps->Robot_Velocity);
 	pgps->Delta_Angle  = thetae + thetad;
 	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
 	pgps->Pre_CorX = pgps->CorX;
