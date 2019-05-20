@@ -19,6 +19,7 @@ typedef enum{
 	Veh_GxGGACheckSum_Err,
 	Veh_InvalidGxGLLMessage_Err,
 	Veh_CommandMessageCheckSum_Err,
+	Veh_IMUWrongMessage_Err,
 }Vehicle_Error;
 
 typedef struct Status{
@@ -34,6 +35,7 @@ typedef struct Status{
 	Check_Status				IMU_Calib_Finish;
 	Check_Status				Veh_Send_Parameters;
 	Check_Status				Veh_Auto_Flag;
+	Check_Status				GPS_Start_Receive_PathCor;
 }Status;
 
 typedef	enum{
@@ -158,6 +160,7 @@ typedef struct GPS{
 	double		Path_Y[20];
 	double 		Path_Yaw[20];
 	int				GPS_Quality;
+	Vehicle_Error GPS_Error;
 }GPS;
 
 
@@ -178,7 +181,6 @@ typedef	struct Vehicle
 
 typedef	struct Message
 {
-	uint8_t RxTempBuffer[100];
 	char    Message[50][30];
 }Message;
 
@@ -195,6 +197,7 @@ typedef struct FlashMemory{
 #define						K3															1
 #define						Wheel_Radius 										0.085
 #define						K																0.5
+#define						IMU_AngleIndex									17
 #define						FLASH_ProgramType_Byte					VoltageRange_1
 #define						FLASH_ProgramType_HalfWord			VoltageRange_2
 #define						FLASH_ProgramType_Word					VoltageRange_3
@@ -203,6 +206,7 @@ typedef struct FlashMemory{
 #define						FLASH_FuzPara_BaseAddr					0x08061000		//(4 Kbytes) (0x08061000 - 0x08061FFF)
 #define						FLASH_GPSPara_BaseAddr					0x08040000		// (128 KBytes) 
 /* Export variables */
+extern char												TempBuffer[2][30];
 extern Status											VehStt;
 extern DCMotor 										M1,M2;
 extern Vehicle										Veh;
@@ -225,6 +229,8 @@ double					ToRPM(double vel);
 double					fix(double value);
 double 					Pi_To_Pi(double angle);
 int							LengthOfLine(uint8_t *inputmessage);
+int							LengthOfIMULine(uint8_t *inputmessage);
+double 					Degree_To_Degree(double angle);
 /*------------ Error update --=========-----------*/
 void						Error_ResetIndex(Error *perror);	
 void						Error_AppendError(Error *perror, Vehicle_Error Error_Code);
@@ -270,6 +276,7 @@ double					GPS_LLToDegree(double LL);
 void 						GPS_LatLonToUTM(GPS *pgps);  // Get 2 values of lat lon and update UTM coordiante to Corx and Cory
 void	 					GPS_GetLatFromString(GPS *pgps, char *inputmessage);
 void						GPS_GetLonFromString(GPS *pgps, char *inputmessage);
+void						GPS_ClearPathBuffer(GPS *pgps);
 void						GPS_UpdatePathYaw(GPS *pgps);
 void						GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage);
 void						GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash);
@@ -288,10 +295,9 @@ void						Defuzzification_Max_Min(IMU *pimu);
 void						IMU_ParametesInit(IMU *pimu);
 void						IMU_UpdateSetAngle(IMU *pimu, double ComAngle);
 void						IMU_UpdatePreAngle(IMU *pimu);
-void						IMU_UpdateAngle(IMU *pimu, double Angle);
 void						IMU_UpdateFuzzyInput(IMU *pimu, double *pSampleTime);
 void						IMU_UpdateFuzzyCoefficients(IMU *pimu, double Ke, double Kedot, double Ku);
-double 					IMU_GetValue(uint8_t *inputmessage, int Val);
+Vehicle_Error	 	IMU_GetValueFromMessage(IMU *pimu, uint8_t *inputmessage);
 
 /*-------- Flash Memory Embedded functions --------*/
 void 						WriteToFlash(FlashMemory *pflash, uint32_t FLASH_Sector, uint32_t FLASH_BaseAddr);

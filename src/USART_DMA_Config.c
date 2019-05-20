@@ -6,7 +6,7 @@ USART_InitTypeDef									US_USART_Struct;
 NVIC_InitTypeDef									US_NVIC_Struct;
 
 /* Variables */
-uint8_t 						U1_TxBuffer[100], U1_RxBuffer[47];
+uint8_t 						U1_TxBuffer[20], U1_RxBuffer[100];
 uint8_t							U2_TxBuffer[5],  U2_RxBuffer[1000];
 uint8_t							U6_TxBuffer[500], U6_RxBuffer[1000];
 /*----- USART1 configuration ---------*/
@@ -37,10 +37,16 @@ void USART1_Config(uint32_t  BaudRate)
 	USART_Cmd(USART1,ENABLE);
 	USART_DMACmd(USART1,USART_DMAReq_Tx,ENABLE);
 	USART_DMACmd(USART1,USART_DMAReq_Rx,ENABLE);
+	USART_ITConfig(USART1,USART_IT_IDLE,ENABLE);
 	
+	US_NVIC_Struct.NVIC_IRQChannel 										= USART1_IRQn;
+	US_NVIC_Struct.NVIC_IRQChannelPreemptionPriority 	= 0;
+	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 3;
+	US_NVIC_Struct.NVIC_IRQChannelCmd									= ENABLE;
+	NVIC_Init(&US_NVIC_Struct);
 	//--------Config DMA USART Tx----------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_4;
-	US_DMA_Struct.DMA_BufferSize							= 100;
+	US_DMA_Struct.DMA_BufferSize							= 20;
 	US_DMA_Struct.DMA_Mode 										= DMA_Mode_Normal;
 	US_DMA_Struct.DMA_DIR											= DMA_DIR_MemoryToPeripheral;
 	US_DMA_Struct.DMA_Memory0BaseAddr					= (uint32_t)&U1_TxBuffer;
@@ -53,11 +59,11 @@ void USART1_Config(uint32_t  BaudRate)
 	US_DMA_Struct.DMA_PeripheralInc						= DMA_PeripheralInc_Disable;
 	US_DMA_Struct.DMA_FIFOMode								= DMA_FIFOMode_Disable;
 	US_DMA_Struct.DMA_FIFOThreshold						= DMA_FIFOThreshold_HalfFull;
-	US_DMA_Struct.DMA_Priority 								= DMA_Priority_High;
+	US_DMA_Struct.DMA_Priority 								= DMA_Priority_Medium;
 	DMA_Init(DMA2_Stream7,&US_DMA_Struct);
 	//-----------Config DMA USART Rx------------------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_4;
-	US_DMA_Struct.DMA_BufferSize							= 47;
+	US_DMA_Struct.DMA_BufferSize							= 100;
 	US_DMA_Struct.DMA_Mode 										= DMA_Mode_Normal;
 	US_DMA_Struct.DMA_DIR											= DMA_DIR_PeripheralToMemory;
 	US_DMA_Struct.DMA_Memory0BaseAddr					= (uint32_t)&U1_RxBuffer;
@@ -70,13 +76,13 @@ void USART1_Config(uint32_t  BaudRate)
 	US_DMA_Struct.DMA_PeripheralInc						= DMA_PeripheralInc_Disable;
 	US_DMA_Struct.DMA_FIFOMode								= DMA_FIFOMode_Disable;
 	US_DMA_Struct.DMA_FIFOThreshold						= DMA_FIFOThreshold_HalfFull;
-	US_DMA_Struct.DMA_Priority 								= DMA_Priority_High;
+	US_DMA_Struct.DMA_Priority 								= DMA_Priority_Medium;
 	DMA_Init(DMA2_Stream5,&US_DMA_Struct);
 	DMA_Cmd(DMA2_Stream5,ENABLE);
 	//------------NVIC Config----------
 	US_NVIC_Struct.NVIC_IRQChannel 										= DMA2_Stream5_IRQn;
 	US_NVIC_Struct.NVIC_IRQChannelPreemptionPriority 	= 0;
-	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 2;
+	US_NVIC_Struct.NVIC_IRQChannelSubPriority					= 3;
 	US_NVIC_Struct.NVIC_IRQChannelCmd									= ENABLE;
 	NVIC_Init(&US_NVIC_Struct);
 	DMA_ITConfig(DMA2_Stream5,DMA_IT_TC,ENABLE);
@@ -212,7 +218,7 @@ void USART6_Config(uint32_t BaudRate)
 	US_DMA_Struct.DMA_PeripheralInc						= DMA_PeripheralInc_Disable;
 	US_DMA_Struct.DMA_FIFOMode								= DMA_FIFOMode_Disable;
 	US_DMA_Struct.DMA_FIFOThreshold						= DMA_FIFOThreshold_HalfFull;
-	US_DMA_Struct.DMA_Priority 								= DMA_Priority_High;
+	US_DMA_Struct.DMA_Priority 								= DMA_Priority_VeryHigh;
 	DMA_Init(DMA2_Stream6,&US_DMA_Struct);
 	//-----------Config DMA USART Rx------------------
 	US_DMA_Struct.DMA_Channel									= DMA_Channel_5;
@@ -229,7 +235,7 @@ void USART6_Config(uint32_t BaudRate)
 	US_DMA_Struct.DMA_PeripheralInc						= DMA_PeripheralInc_Disable;
 	US_DMA_Struct.DMA_FIFOMode								= DMA_FIFOMode_Disable;
 	US_DMA_Struct.DMA_FIFOThreshold						= DMA_FIFOThreshold_HalfFull;
-	US_DMA_Struct.DMA_Priority 								= DMA_Priority_High;
+	US_DMA_Struct.DMA_Priority 								= DMA_Priority_VeryHigh;
 	DMA_Init(DMA2_Stream2,&US_DMA_Struct);
 	DMA_Cmd(DMA2_Stream2,ENABLE);
 	//------------NVIC Config----------

@@ -17,6 +17,7 @@ double 						NB,NM,NS,ZE,PS,PM,PB;
 trimf 						In1_NS,In1_ZE,In1_PS,In2_ZE;
 trapf 						In1_NB,In1_PB,In2_NE,In2_PO;
 Error							Veh_Error;
+char							TempBuffer[2][30];
 /*----- Error functions -----------------------------------*/
 void	Error_ResetIndex(Error *perror)
 {
@@ -40,6 +41,7 @@ void	Status_ParametersInit(Status *pstt)
 	pstt->IMU_Calib_Finish				= Check_NOK;
 	pstt->Veh_Send_Parameters			= Check_NOK;
 	pstt->Veh_Auto_Flag						= Check_NOK;
+	pstt->GPS_Start_Receive_PathCor	 = Check_NOK;
 }
 
 void	Status_UpdateStatus(Check_Status *pstt, Check_Status stt)
@@ -213,6 +215,16 @@ int	LengthOfLine(uint8_t *inputmessage)
 	}
 	return length;
 }
+
+int	LengthOfIMULine(uint8_t *inputmessage)
+{
+	int length = 0;
+	while(inputmessage[length] != 0x0D)
+	{
+		length++;
+	}
+	return length;
+}
 /* ----------------------- Timer functions -----------------------------------*/
 void	Time_ParametersInit(Time *ptime, uint32_t Sample, uint32_t Send)
 {
@@ -336,7 +348,7 @@ void GetMessageInfo(char *inputmessage, char result[50][30], char character)
 		}
 	}
 	
-	while((inputmessage[index] != 0x0D) && (inputmessage[index + 1] != 0x0A) && (inputmessage[index] != 0))
+	while((inputmessage[index] != 0x0D) && (inputmessage[index + 1] != 0x0A) && (inputmessage[index] != 0) && (index < 1000))
 	{
 		if(inputmessage[index] != character)
 		{
@@ -360,9 +372,15 @@ void GetMessageInfo(char *inputmessage, char result[50][30], char character)
 **/
 double GetValueFromString(char *value)
 {
-	char temp[2][10];
 	double p1 = 0,p2 = 0, h = 1, result;
 	int row = 0, col = 0, index = 0, len1, len2, sign = 1;
+	for(int i = 0; i < 2; i++)
+	{
+		for(int j = 0; j < 30; j++)
+		{
+			TempBuffer[i][j] = 0;
+		}
+	}
 	if(value[0] == '-') 
 	{
 		index++;
@@ -377,7 +395,7 @@ double GetValueFromString(char *value)
 	{
 		if(value[index] != '.')
 		{
-			temp[row][col] = value[index];
+			TempBuffer[row][col] = value[index];
 			col++;
 		}
 		else
@@ -393,7 +411,7 @@ double GetValueFromString(char *value)
 		len1 = col;
 		for(int i = len1 - 1; i >= 0; i--)
 		{
-			p1 += ((uint8_t)temp[0][i] - 48) * h;
+			p1 += ((uint8_t)TempBuffer[0][i] - 48) * h;
 			h *= 10;
 		}
 		p2 = 0;
@@ -402,14 +420,14 @@ double GetValueFromString(char *value)
 	{
 		for(int i = len1 - 1; i >= 0; i--)
 		{
-			p1 += ((uint8_t)temp[0][i] - 48) * h;
+			p1 += ((uint8_t)TempBuffer[0][i] - 48) * h;
 			h *= 10;
 		}
 		len2 = col;
 		h = 0.1;
 		for(int i = 0; i < len2; i++)
 		{
-			p2 += ((uint8_t)temp[1][i] - 48) * h;
+			p2 += ((uint8_t)TempBuffer[1][i] - 48) * h;
 			h *= 0.1;
 		}
 	}
@@ -660,6 +678,15 @@ double Pi_To_Pi(double angle)
 	return result;
 }
 
+double Degree_To_Degree(double angle)
+{
+	if(angle > 180)
+		angle = angle - 360;
+	else if(angle < -180)
+		angle = angle + 360;
+	else angle = angle;
+	return angle;
+}
 /** @brief  : Convert lat lon coordinate into UTM
 **  @agr    : input lat and lon values from GNGLL message GLONASS Lat Lon
 **  @retval : Result buffer x ,y
@@ -732,6 +759,7 @@ void GPS_ParametersInit(GPS *pgps)
 	pgps->Pre_CorX = 0;
 	pgps->Pre_CorY = 0;
 	pgps->Goal_Flag = Check_NOK;
+	pgps->GPS_Error = Veh_NoneError;
 }
 
 /** @brief  : GPS updates path yaw 
@@ -754,16 +782,16 @@ void	GPS_UpdatePathYaw(GPS *pgps)
 void	GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage)
 {
 	GetMessageInfo((char*)inputmessage,pgps->TempBuffer,',');
-	pgps->NbOfWayPoints = GetValueFromString(&pgps->TempBuffer[1][0]);
-	for(int i = 0; i < pgps->NbOfWayPoints; i++)
-	{
-		pgps->Latitude 			= GetValueFromString(&pgps->TempBuffer[i * 2 + 2][0]);
-		pgps->Longitude			= GetValueFromString(&pgps->TempBuffer[i * 2 + 3][0]);
-		GPS_LatLonToUTM(pgps);
-		pgps->Path_X[i]			= pgps->CorX;	
-		pgps->Path_Y[i]			= pgps->CorY;
-	}
-	GPS_UpdatePathYaw(pgps);
+	pgps->Latitude 			= GetValueFromString(&pgps->TempBuffer[1][0]);
+	pgps->Longitude			= GetValueFromString(&pgps->TempBuffer[2][0]);
+	GPS_LatLonToUTM(pgps);
+	pgps->Path_X[pgps->NbOfWayPoints]			= pgps->CorX;	
+	pgps->Path_Y[pgps->NbOfWayPoints]			= pgps->CorY;
+	pgps->NbOfWayPoints++;
+	pgps->CorX = 0;
+	pgps->CorY = 0;
+	pgps->Latitude = 0;
+	pgps->Longitude = 0;
 }
 
 /** @brief  : Save GPS path coordinate to internal flash memory
@@ -809,7 +837,15 @@ void GPS_GetLatFromString(GPS *pgps, char *inputmessage)
 	pgps->Latitude = GPS_LLToDegree(s1 + s2);
 }
 
-
+void GPS_ClearPathBuffer(GPS *pgps)
+{
+	for(int i = 0; i < 20; i++)
+	{
+		pgps->Path_X[i] = 0;
+		pgps->Path_Y[i] = 0;
+		pgps->Path_Yaw[i] = 0;
+	}
+}
 /** @brief  : Function get lat lon value from GNGLL message
 **  @agr    : String value received from message
 **  @retval : Value
@@ -865,11 +901,12 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime)
 	if(tyaw >= 0)
 		efa = -efa;
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
-	if(goal_radius <= 3)
+	if(goal_radius <= 1)
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
-	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - pgps->Angle->Angle);
+	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - Pi_To_Pi(pgps->Angle->Angle * (double)pi/180));
 	thetad = atan2(K * efa,pgps->Robot_Velocity);
 	pgps->Delta_Angle  = thetae + thetad;
+	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
 	pgps->Pre_CorX = pgps->CorX;
 	pgps->Pre_CorY = pgps->CorY;
 }
@@ -1308,7 +1345,9 @@ void	IMU_ParametesInit(IMU *pimu)
 **/
 void	IMU_UpdateSetAngle(IMU *pimu, double ComAngle)
 {
-	pimu->Set_Angle = pimu->Angle + ComAngle;
+	double temp;
+	temp = pimu->Angle + ComAngle;
+	pimu->Set_Angle = Degree_To_Degree(temp);
 }
 
 /** @brief  : Update previous angle
@@ -1320,14 +1359,6 @@ void	IMU_UpdatePreAngle(IMU *pimu)
 	pimu->Pre_Angle = pimu->Angle;
 }
 
-/** @brief  : Update Angle
-**  @agr    : IMU and Angle
-**  @retval : none
-**/
-void	IMU_UpdateAngle(IMU *pimu, double Angle)
-{
-	pimu->Angle = Angle;
-}
 
 /** @brief  : Update input for fuzzy controller
 **  @agr    : imu and sampletime
@@ -1358,31 +1389,47 @@ void	IMU_UpdateFuzzyCoefficients(IMU *pimu, double Ke, double Kedot, double Ku)
 **  @agr    : inputmessage, val
 **  @retval : Output value
 **/
-double IMU_GetValue(uint8_t *inputmessage, int Val)
+Vehicle_Error IMU_GetValueFromMessage(IMU *pimu, uint8_t *inputmessage)
 {
-	double result = 0;
-	int i = 1, temp = 100000;
-	uint8_t TempBuffer[6][10] = {0};
-	for(int row = 0; row < 6; row++)
+//	int i = 1, temp = 100000;
+//	for(int row = 0; row < 6; row++)
+//	{
+//		for(int col = 0; col < 7; col++)
+//		{
+//			TempBuffer[row][col] = inputmessage[i];
+//			i++;
+//		}
+//		i++;
+//	}
+//	for(int j = 1; j < 7; j++)
+//	{
+//		result += (TempBuffer[Val - 1][j] - 48) * temp;
+//		temp /= 10;
+//	}
+//	result /= 1000;
+//	if(TempBuffer[Val - 1][0] == (uint8_t)'-')
+//	{
+//		result = -result;
+//	}
+	int temp = 100000;
+	double Angle = 0;
+	if(inputmessage[0] == 0x0A)
 	{
-		for(int col = 0; col < 7; col++)
+		for(int i = 0; i < 6; i++)
 		{
-			TempBuffer[row][col] = inputmessage[i];
-			i++;
+			Angle += (inputmessage[IMU_AngleIndex + 1 + i] - 48) * temp;
+			temp /= 10;
 		}
-		i++;
+		Angle /= 1000;
+		if(inputmessage[IMU_AngleIndex] == (uint8_t)' ') pimu->Angle = Angle;
+		else pimu->Angle = -Angle;
 	}
-	for(int j = 1; j < 7; j++)
+	else
 	{
-		result += (TempBuffer[Val - 1][j] - 48) * temp;
-		temp /= 10;
+		pimu->Angle = 0;
+		return Veh_IMUWrongMessage_Err;
 	}
-	result /= 1000;
-	if(TempBuffer[Val - 1][0] == (uint8_t)'-')
-	{
-		result = -result;
-	}
-	return result;
+	return Veh_NoneError;
 }
 
 /** @brief  : Copy IMU message to TX buffer 
