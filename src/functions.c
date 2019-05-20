@@ -872,8 +872,9 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime)
 {                   /*   Current pose of the robot   */ /*  Path coordinate  */ /*  ThetaP  */
 	double dmin = 0,dx,dy,d;
 	int 	 index = 0;
-	double efa, thetad, thetae, tyaw, goal_radius;
+	double efa, thetad, thetae, goal_radius;
 	pgps->Angle = &Mag;
+	pgps->Angle->Angle *= (double)pi/180;
 	/* V = sqrt(vx^2 + vy^2) */
 	pgps->Robot_Velocity = (pgps->CorX - pgps->Pre_CorX) / SampleTime;
 	//Searching the nearest point
@@ -896,14 +897,11 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime)
 			}
 		}
 	}
-	efa  = dmin;
-	tyaw = Pi_To_Pi(atan2(pgps->CorY - pgps->Path_Y[index],pgps->CorX - pgps->Path_X[index]) - Pi_To_Pi(pgps->Angle->Angle * (double)pi/180));
-	if(tyaw >= 0)
-		efa = -efa;
+	efa = -(pgps->CorX - pgps->Path_X[index]) * (cos(pgps->Angle->Angle + pi/2)) - (pgps->CorY - pgps->Path_Y[index]) * sin(pgps->Angle->Angle + pi/2);
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
 	if(goal_radius <= 1)
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
-	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - Pi_To_Pi(pgps->Angle->Angle * (double)pi/180));
+	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - Pi_To_Pi(pgps->Angle->Angle));
 	thetad = atan2(K * efa,pgps->Robot_Velocity);
 	pgps->Delta_Angle  = thetae + thetad;
 	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
