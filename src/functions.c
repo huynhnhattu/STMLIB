@@ -875,9 +875,9 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime)
 	double efa, thetad, thetae, tyaw, goal_radius;
 	pgps->Angle = &Mag;
 	/* V = sqrt(vx^2 + vy^2) */
-	pgps->Robot_Velocity = sqrt(pow((pgps->CorX - pgps->Pre_CorX)/SampleTime,2) + pow((pgps->CorY - pgps->Pre_CorY)/SampleTime,2));
+	pgps->Robot_Velocity = (pgps->CorX - pgps->Pre_CorX) / SampleTime;
 	//Searching the nearest point
-	for(int i = 0; i < pgps->NbOfWayPoints; i++) 
+	for(int i = 0; i < pgps->NbOfWayPoints; i++)
 	{
 		dx = pgps->CorX - pgps->Path_X[i];
 		dy = pgps->CorY - pgps->Path_Y[i];
@@ -897,7 +897,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime)
 		}
 	}
 	efa  = dmin;
-	tyaw = Pi_To_Pi(atan2(pgps->CorY - pgps->Path_Y[index],pgps->CorX - pgps->Path_X[index]) - pgps->Angle->Angle);
+	tyaw = Pi_To_Pi(atan2(pgps->CorY - pgps->Path_Y[index],pgps->CorX - pgps->Path_X[index]) - Pi_To_Pi(pgps->Angle->Angle * (double)pi/180));
 	if(tyaw >= 0)
 		efa = -efa;
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
