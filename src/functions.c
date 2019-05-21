@@ -878,15 +878,18 @@ void GPS_GetLonFromString(GPS *pgps, char *inputmessage)
 **  @agr    : current pose of the robot and Pathx, Pathy
 **  @retval : Steering angle
 **/
-void GPS_StanleyControl(GPS *pgps, double SampleTime)
+void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double M2Velocity)
 {                   /*   Current pose of the robot   */ /*  Path coordinate  */ /*  ThetaP  */
 	double dmin = 0,dx,dy,d;
 	int 	 index = 0;
-	double efa, thetad, thetae, goal_radius;
+	double efa, thetad, thetae, goal_radius, VM1, VM2;
 	pgps->Angle = &Mag;
 	pgps->Angle->Angle *= (double)pi/180;
 	/* V = sqrt(vx^2 + vy^2) */
-	pgps->Robot_Velocity = (pgps->CorX - pgps->Pre_CorX) / SampleTime;
+	
+	VM1 = Wheel_Radius * M1Velocity/60;
+	VM2 = Wheel_Radius * M2Velocity/60;
+	pgps->Robot_Velocity = (VM1 + VM2)/2;
 	//Searching the nearest point
 	for(int i = 0; i < pgps->NbOfWayPoints; i++)
 	{

@@ -271,7 +271,7 @@ Command_State		GetNbOfReceiveHeader(char *input);
 int							FeedBack(uint8_t *outputmessage, char inputstring[]);
 /*--------Stanley functions and GPS --------------*/
 void						GPS_ParametersInit(GPS *pgps);
-void 						GPS_StanleyControl(GPS *pgps, double SampleTime);
+void 						GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double M2Velocity);
 double					GPS_LLToDegree(double LL);
 void 						GPS_LatLonToUTM(GPS *pgps);  // Get 2 values of lat lon and update UTM coordiante to Corx and Cory
 void	 					GPS_GetLatFromString(GPS *pgps, char *inputmessage);
