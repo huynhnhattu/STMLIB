@@ -880,11 +880,11 @@ void GPS_GetLonFromString(GPS *pgps, char *inputmessage)
 **/
 void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double M2Velocity)
 {                   /*   Current pose of the robot   */ /*  Path coordinate  */ /*  ThetaP  */
-	double dmin = 0,dx,dy,d;
+	double dmin = 0,dx,dy,d, tyaw;
 	int 	 index = 0;
-	double efa, thetad, thetae, goal_radius, VM1, VM2;
+	double efa, thetad, thetae, goal_radius, VM1, VM2, AngleDegree;
 	pgps->Angle = &Mag;
-	pgps->Angle->Angle *= (double)pi/180;
+	AngleDegree = Pi_To_Pi(pgps->Angle->Angle * (double)pi/180);
 	/* V = sqrt(vx^2 + vy^2) */
 	
 	VM1 = Wheel_Radius * M1Velocity/60;
@@ -910,14 +910,22 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 			}
 		}
 	}
-	efa = -(pgps->CorX - pgps->Path_X[index]) * (cos(pgps->Angle->Angle + pi/2)) - (pgps->CorY - pgps->Path_Y[index]) * sin(pgps->Angle->Angle + pi/2);
+	efa = -((pgps->CorX - pgps->Path_X[index]) * (cos(AngleDegree + pi/2)) + (pgps->CorY - pgps->Path_Y[index]) * sin(AngleDegree + pi/2));
+	//tyaw = Pi_To_Pi(atan2(pgps->CorY - pgps->Path_Y[index],pgps->CorX - pgps->Path_X[index]) - AngleDegree);
+	//efa = dmin;
+	//if(tyaw >= 0)
+	//	efa = -efa;
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
 	if(goal_radius <= 1)
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
-	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - Pi_To_Pi(pgps->Angle->Angle));
+	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - (AngleDegree));
 	thetad = atan2(pgps->K * efa,pgps->Robot_Velocity);
 	pgps->Delta_Angle  = thetae + thetad;
 	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
+	if(pgps->Delta_Angle > 90)
+		pgps->Delta_Angle = 90;
+	if(pgps->Delta_Angle < -90)
+		pgps->Delta_Angle = -90;
 	pgps->Pre_CorX = pgps->CorX;
 	pgps->Pre_CorY = pgps->CorY;
 }
