@@ -182,6 +182,7 @@ typedef	struct Vehicle
 	uint8_t							TotalDistance;
 	uint8_t						  Srf05_Selected_Sensor;
 	Vehicle_Error				Veh_Error;
+	char								String_Send[20];
 }Vehicle;
 
 typedef	struct Message
@@ -272,7 +273,7 @@ Check_Status  	IsValidData(char input);
 Check_Status 		IsCorrectMessage(uint8_t *inputmessage, int length, uint8_t byte1, uint8_t byte2);
 Check_Status		StringHeaderCompare(char *s1, char header[]);
 Command_State		GetNbOfReceiveHeader(char *input);
-int							FeedBack(uint8_t *outputmessage, char inputstring[]);
+int							FeedBack(uint8_t *outputmessage, char inputstring[20]);
 /*--------Stanley functions and GPS --------------*/
 void						GPS_ParametersInit(GPS *pgps);
 void 						GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double M2Velocity);

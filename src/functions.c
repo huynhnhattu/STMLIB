@@ -630,9 +630,10 @@ Command_State		GetNbOfReceiveHeader(char *input)
 **  @agr    : Result and status
 **  @retval : lenght 
 **/
-int FeedBack(uint8_t *outputmessage, char inputstring[])
+int FeedBack(uint8_t *outputmessage, char inputstring[20])
 {
 	int i = 0;
+	
 	while(inputstring[i] != 0)
 	{
 		outputmessage[i] = inputstring[i];
@@ -640,6 +641,7 @@ int FeedBack(uint8_t *outputmessage, char inputstring[])
 	}
 	outputmessage[i++]  = 0x0D;
 	outputmessage[i++]  = 0x0A;
+	
 	return i;
 }
 
@@ -960,7 +962,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
 	thetae = Pi_To_Pi(pgps->P_Yaw[index] - (AngleRadian));
 	thetad = atan2(pgps->K * efa,pgps->Robot_Velocity);
-	pgps->Delta_Angle  = thetae + thetad;
+	pgps->Delta_Angle  = thetae + 0;
 	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
 	if(pgps->Delta_Angle > 90)
 		pgps->Delta_Angle = 90;
