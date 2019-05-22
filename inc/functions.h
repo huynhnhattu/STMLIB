@@ -148,6 +148,7 @@ typedef struct GPS{
 	double 		CorY;
 	IMU				*Angle;
 	double		K;
+	double		Step;
 	Check_Status			Goal_Flag;
 	double		Latitude;
 	double    Longitude;
@@ -159,8 +160,11 @@ typedef struct GPS{
 	char			TempBuffer[50][30];
 	double    Path_X[20];
 	double		Path_Y[20];
-	double 		Path_Yaw[20];
 	int				GPS_Quality;
+	int				NbOfP;
+	double		P_X[2000];
+	double    P_Y[2000];
+	double		P_Yaw[2000];
 	Vehicle_Error GPS_Error;
 }GPS;
 
@@ -280,7 +284,8 @@ void						GPS_ClearPathBuffer(GPS *pgps);
 void						GPS_UpdatePathYaw(GPS *pgps);
 void						GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage);
 void						GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash);
-void						GPS_UpdateParameters(GPS *pgps, double K);
+void						GPS_UpdateParameters(GPS *pgps, double K, double Step);
+void						GPS_PathPlanning(GPS *pgps, float Step);
 Check_Status		GPS_HeaderCompare(uint8_t *s1, char Header[5]);
 Check_Status		GPS_GetQualityFromString(GPS *pgps, uint8_t *inputmessage, char result[50][30]);
 Vehicle_Error		GPS_GetLLQMessage(GPS *pgps, uint8_t *inputmessage,char result[50][30]);

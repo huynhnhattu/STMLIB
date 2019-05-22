@@ -761,6 +761,8 @@ void GPS_ParametersInit(GPS *pgps)
 	pgps->Goal_Flag = Check_NOK;
 	pgps->GPS_Error = Veh_NoneError;
 	pgps->K = 0.5;
+	pgps->NbOfP = 0;
+	pgps->Step = 0.3;
 }
 
 /** @brief  : GPS updates path yaw 
@@ -769,11 +771,11 @@ void GPS_ParametersInit(GPS *pgps)
 **/
 void	GPS_UpdatePathYaw(GPS *pgps)
 {
-	for(int i = 0; i < pgps->NbOfWayPoints; i++)
+	for(int i = 0; i < pgps->NbOfP; i++)
 	{
-		pgps->Path_Yaw[i] = atan2(pgps->Path_Y[i + 1] - pgps->Path_Y[i],pgps->Path_X[i + 1] - pgps->Path_X[i]);
+		pgps->P_Yaw[i] = atan2(pgps->P_Y[i + 1] - pgps->P_Y[i],pgps->P_X[i + 1] - pgps->P_X[i]);
 	}
-	pgps->Path_Yaw[pgps->NbOfWayPoints - 1] = 0;
+	pgps->P_Yaw[pgps->NbOfP - 1] = 0;
 }
 
 /** @brief  : GPS updates path coordinate from PC format message includes: pathx, pathy and pathyaw
@@ -799,9 +801,10 @@ void	GPS_UpdatePathCoordinate(GPS *pgps, uint8_t *inputmessage)
 **  @agr    : GPS and K
 **  @retval : none
 **/
-void	GPS_UpdateParameters(GPS *pgps, double K)
+void	GPS_UpdateParameters(GPS *pgps, double K, double Step)
 {
 	pgps->K = K;
+	pgps->Step = Step;
 }
 
 /** @brief  : Save GPS path coordinate to internal flash memory
@@ -853,8 +856,13 @@ void GPS_ClearPathBuffer(GPS *pgps)
 	{
 		pgps->Path_X[i] = 0;
 		pgps->Path_Y[i] = 0;
-		pgps->Path_Yaw[i] = 0;
 	}
+	for(int i = 0; i < 2000; i++)
+	{
+		pgps->Path_X[i] = 0;
+		pgps->Path_Y[i] = 0;
+	}
+	
 }
 /** @brief  : Function get lat lon value from GNGLL message
 **  @agr    : String value received from message
@@ -874,6 +882,38 @@ void GPS_GetLonFromString(GPS *pgps, char *inputmessage)
 	pgps->Longitude = GPS_LLToDegree(s1 + s2);
 }
 
+void	GPS_PathPlanning(GPS *pgps, float Step)
+{
+	double temp, a, b;
+	pgps->NbOfP = 0;
+	for(int i = 0; i < pgps->NbOfWayPoints - 1; i++)
+	{
+		a = (pgps->Path_Y[i + 1] - pgps->Path_Y[i]) / (pgps->Path_X[i + 1] - pgps->Path_X[i]);
+		b = pgps->Path_Y[i] - a * pgps->Path_X[i];
+		temp = pgps->Path_X[i];
+		if(pgps->Path_X[i] < pgps->Path_X[i + 1])
+		{
+			while(temp < pgps->Path_X[i + 1])
+			{
+				pgps->P_X[pgps->NbOfP] = temp;
+				pgps->P_Y[pgps->NbOfP] = a * pgps->P_X[pgps->NbOfP] + b;
+				pgps->NbOfP++;
+				temp += Step;
+			}
+		}
+		else
+		{
+			while(temp > pgps->Path_X[i + 1])
+			{
+				pgps->P_X[pgps->NbOfP] = temp;
+				pgps->P_Y[pgps->NbOfP] = a * pgps->P_X[pgps->NbOfP] + b;
+				pgps->NbOfP++;
+				temp -= Step;
+			}
+		}
+	}
+}
+
 /** @brief  : Controller using Stanley algorithm
 **  @agr    : current pose of the robot and Pathx, Pathy
 **  @retval : Steering angle
@@ -891,10 +931,10 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 	VM2 = Wheel_Radius * M2Velocity/60;
 	pgps->Robot_Velocity = (VM1 + VM2)/2;
 	//Searching the nearest point
-	for(int i = 0; i < pgps->NbOfWayPoints; i++)
+	for(int i = 0; i < pgps->NbOfP; i++)
 	{
-		dx = pgps->CorX - pgps->Path_X[i];
-		dy = pgps->CorY - pgps->Path_Y[i];
+		dx = pgps->CorX - pgps->P_X[i];
+		dy = pgps->CorY - pgps->P_Y[i];
 		d  = sqrt(pow(dx,2) + pow(dy,2));
 		if(i == 0)
 		{
@@ -910,7 +950,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 			}
 		}
 	}
-	efa = -((pgps->CorX - pgps->Path_X[index]) * (cos(AngleRadian + pi/2)) + (pgps->CorY - pgps->Path_Y[index]) * sin(AngleRadian + pi/2));
+	efa = -((pgps->CorX - pgps->P_X[index]) * (cos(AngleRadian + pi/2)) + (pgps->CorY - pgps->P_Y[index]) * sin(AngleRadian + pi/2));
 	//tyaw = Pi_To_Pi(atan2(pgps->CorY - pgps->Path_Y[index],pgps->CorX - pgps->Path_X[index]) - AngleDegree);
 	//efa = dmin;
 	//if(tyaw >= 0)
@@ -918,7 +958,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
 	if(goal_radius <= 1)
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
-	thetae = Pi_To_Pi(pgps->Path_Yaw[index] - (AngleRadian));
+	thetae = Pi_To_Pi(pgps->P_Yaw[index] - (AngleRadian));
 	thetad = atan2(pgps->K * efa,pgps->Robot_Velocity);
 	pgps->Delta_Angle  = thetae + thetad;
 	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
