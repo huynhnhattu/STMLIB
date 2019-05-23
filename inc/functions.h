@@ -156,6 +156,8 @@ typedef struct GPS{
 	double 		Pre_CorY;
 	double 		Robot_Velocity;
 	int 			NbOfWayPoints;
+	double		Thetae;
+	double  	Thetad;
 	double		Delta_Angle;
 	char			TempBuffer[50][30];
 	double    Path_X[20];

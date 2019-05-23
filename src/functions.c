@@ -924,7 +924,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 {                   /*   Current pose of the robot   */ /*  Path coordinate  */ /*  ThetaP  */
 	double dmin = 0,dx,dy,d, tyaw;
 	int 	 index = 0;
-	double efa, thetad, thetae, goal_radius, VM1, VM2, AngleRadian;
+	double efa, goal_radius, VM1, VM2, AngleRadian;
 	pgps->Angle = &Mag;
 	AngleRadian = Pi_To_Pi(pgps->Angle->Angle * (double)pi/180);
 	/* V = sqrt(vx^2 + vy^2) */
@@ -960,9 +960,9 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
 	if(goal_radius <= 1)
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
-	thetae = Pi_To_Pi(pgps->P_Yaw[index] - (AngleRadian));
-	thetad = atan2(pgps->K * efa,pgps->Robot_Velocity);
-	pgps->Delta_Angle  = thetae + 0;
+	pgps->Thetae = Pi_To_Pi(pgps->P_Yaw[index] - (AngleRadian));
+	pgps->Thetad = atan2(pgps->K * efa,pgps->Robot_Velocity);
+	pgps->Delta_Angle  = pgps->Thetae + pgps->Thetad;
 	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
 	if(pgps->Delta_Angle > 90)
 		pgps->Delta_Angle = 90;
@@ -1589,6 +1589,15 @@ void ReadFromFlash(FlashMemory *pflash, uint32_t FLASH_BaseAddr)
 		FLASH_BaseAddr += 4;
 	}
 }
+
+
+
+
+
+
+
+
+
 
 
 
