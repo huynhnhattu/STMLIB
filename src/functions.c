@@ -777,7 +777,7 @@ void GPS_ParametersInit(GPS *pgps)
 	pgps->GPS_Error = Veh_NoneError;
 	pgps->K = 0.5;
 	pgps->NbOfP = 0;
-	pgps->Step = 0.3;
+	pgps->Step = 1;
 }
 
 /** @brief  : GPS updates path yaw 
@@ -872,12 +872,11 @@ void GPS_ClearPathBuffer(GPS *pgps)
 		pgps->Path_X[i] = 0;
 		pgps->Path_Y[i] = 0;
 	}
-	for(int i = 0; i < 2000; i++)
+	for(int i = 0; i < 3000; i++)
 	{
 		pgps->P_X[i] = 0;
 		pgps->P_Y[i] = 0;
 	}
-	
 }
 /** @brief  : Function get lat lon value from GNGLL message
 **  @agr    : String value received from message
@@ -965,6 +964,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 			}
 		}
 	}
+	pgps->P_Yaw_Index = index;
 	efa = -((pgps->CorX - pgps->P_X[index]) * (cos(AngleRadian + pi/2)) + (pgps->CorY - pgps->P_Y[index]) * sin(AngleRadian + pi/2));
 	//tyaw = Pi_To_Pi(atan2(pgps->CorY - pgps->Path_Y[index],pgps->CorX - pgps->Path_X[index]) - AngleDegree);
 	//efa = dmin;
@@ -973,7 +973,7 @@ void GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double 
 	goal_radius = sqrt(pow(pgps->CorX - pgps->Path_X[pgps->NbOfWayPoints - 1],2) + pow(pgps->CorY - pgps->Path_Y[pgps->NbOfWayPoints - 1],2));
 	if(goal_radius <= 1)
 		Status_UpdateStatus(&GPS_NEO.Goal_Flag,Check_OK);
-	pgps->Thetae = Pi_To_Pi(pgps->P_Yaw[index] - (AngleRadian));
+	pgps->Thetae = Pi_To_Pi((pi/2 - pgps->P_Yaw[index]) - (AngleRadian));
 	pgps->Thetad = atan2(pgps->K * efa,pgps->Robot_Velocity);
 	pgps->Delta_Angle  = pgps->Thetae + pgps->Thetad;
 	pgps->Delta_Angle  =  Degree_To_Degree(pgps->Delta_Angle * ((double)180/pi));
@@ -1465,26 +1465,6 @@ void	IMU_UpdateFuzzyCoefficients(IMU *pimu, double Ke, double Kedot, double Ku)
 **/
 Vehicle_Error IMU_GetValueFromMessage(IMU *pimu, uint8_t *inputmessage)
 {
-//	int i = 1, temp = 100000;
-//	for(int row = 0; row < 6; row++)
-//	{
-//		for(int col = 0; col < 7; col++)
-//		{
-//			TempBuffer[row][col] = inputmessage[i];
-//			i++;
-//		}
-//		i++;
-//	}
-//	for(int j = 1; j < 7; j++)
-//	{
-//		result += (TempBuffer[Val - 1][j] - 48) * temp;
-//		temp /= 10;
-//	}
-//	result /= 1000;
-//	if(TempBuffer[Val - 1][0] == (uint8_t)'-')
-//	{
-//		result = -result;
-//	}
 	int temp = 100000;
 	double Angle = 0;
 	if(inputmessage[0] == 0x0A)

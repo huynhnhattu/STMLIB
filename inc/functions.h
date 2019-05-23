@@ -154,6 +154,7 @@ typedef struct GPS{
 	double 		Pre_CorX;
 	double 		Pre_CorY;
 	IMU				*Angle;
+	int				P_Yaw_Index;
 	/* Stanley control variables */
 	double		Thetae;
 	double  	Thetad;
@@ -173,9 +174,9 @@ typedef struct GPS{
 	char			TempBuffer[50][30];
 	double    Path_X[20];
 	double		Path_Y[20];
-	double		P_X[2000];
-	double    P_Y[2000];
-	double		P_Yaw[2000];
+	double		P_X[3000];
+	double    P_Y[3000];
+	double		P_Yaw[3000];
 	/* Error GPS code */
 	Vehicle_Error GPS_Error;
 }GPS;
@@ -190,11 +191,12 @@ typedef	struct Vehicle
 	double    					Max_Velocity;
 	double							Manual_Velocity;
 	double							Manual_Angle;
+	/* Calibration variables */
 	uint16_t						Distance;
 	uint8_t							TotalDistance;
+	/* Srf05 sensor variables */
 	uint8_t						  Srf05_Selected_Sensor;
 	Vehicle_Error				Veh_Error;
-	char								String_Send[20];
 }Vehicle;
 
 typedef	struct Message
@@ -301,7 +303,6 @@ void						GPS_SavePathCoordinateToFlash(GPS *pgps, FlashMemory *pflash);
 void						GPS_UpdateParameters(GPS *pgps, double K, double Step);
 void						GPS_PathPlanning(GPS *pgps, float Step);
 Check_Status		GPS_HeaderCompare(uint8_t *s1, char Header[5]);
-Check_Status		GPS_GetQualityFromString(GPS *pgps, uint8_t *inputmessage, char result[50][30]);
 Vehicle_Error		GPS_GetLLQMessage(GPS *pgps, uint8_t *inputmessage,char result[50][30]);
 /*--------Fuzzy control-------------------*/
 void						Fuzzy_ParametersInit(void);
