@@ -647,7 +647,6 @@ Check_Status	IsDataTransferCompleted(void)
 int FeedBack(uint8_t *outputmessage, char inputstring[20])
 {
 	int i = 0;
-	while(!IsDataTransferCompleted()){};
 	while(inputstring[i] != 0)
 	{
 		outputmessage[i] = inputstring[i];
