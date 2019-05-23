@@ -626,6 +626,20 @@ Command_State		GetNbOfReceiveHeader(char *input)
 	else return None;
 }
 
+/** @brief  : Check if Data transfer finish or not
+**  @agr    : None
+**  @retval : Status
+**/
+Check_Status	IsDataTransferCompleted(void)
+{
+	if(DMA_GetFlagStatus(DMA2_Stream6,DMA_FLAG_TCIF6))
+	{
+		return Check_OK;
+	}
+	else
+		return Check_NOK;
+}
+
 /** @brief  : Feed back message
 **  @agr    : Result and status
 **  @retval : lenght 
@@ -633,7 +647,7 @@ Command_State		GetNbOfReceiveHeader(char *input)
 int FeedBack(uint8_t *outputmessage, char inputstring[20])
 {
 	int i = 0;
-	
+	while(!IsDataTransferCompleted()){};
 	while(inputstring[i] != 0)
 	{
 		outputmessage[i] = inputstring[i];
@@ -641,9 +655,9 @@ int FeedBack(uint8_t *outputmessage, char inputstring[20])
 	}
 	outputmessage[i++]  = 0x0D;
 	outputmessage[i++]  = 0x0A;
-	
 	return i;
 }
+
 
 /*-------------------- Stanley Function ------------------*/
 /** @brief  : ToRPM
@@ -861,8 +875,8 @@ void GPS_ClearPathBuffer(GPS *pgps)
 	}
 	for(int i = 0; i < 2000; i++)
 	{
-		pgps->Path_X[i] = 0;
-		pgps->Path_Y[i] = 0;
+		pgps->P_X[i] = 0;
+		pgps->P_Y[i] = 0;
 	}
 	
 }

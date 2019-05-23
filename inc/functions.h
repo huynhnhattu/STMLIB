@@ -64,6 +64,7 @@ typedef enum{
 	Manual_Mode,
 	Calib_Mode,
 	KeyBoard_Mode,
+	Soft_Reset_Mode,
 }Mode;
 
 typedef enum{
@@ -97,12 +98,15 @@ typedef struct Time{
 }Time;
 
 typedef	struct  DCMotor{
+	/* PID parameters */
 	double		Kp;
 	double 		Ki;
 	double		Kd;
+	/* Encoder parameters */
 	uint16_t  Enc;
 	uint16_t 	PreEnc;
 	uint8_t		OverFlow;
+	/* Input and Output of PID controller */
 	double		Set_Vel;
 	double 		Current_Vel;		
 	uint8_t		Change_State;
@@ -144,29 +148,35 @@ typedef struct IMU{
 
 
 typedef struct GPS{
+	/* Robot state */
 	double 		CorX;
 	double 		CorY;
-	IMU				*Angle;
-	double		K;
-	double		Step;
-	Check_Status			Goal_Flag;
-	double		Latitude;
-	double    Longitude;
 	double 		Pre_CorX;
 	double 		Pre_CorY;
-	double 		Robot_Velocity;
-	int 			NbOfWayPoints;
+	IMU				*Angle;
+	/* Stanley control variables */
 	double		Thetae;
 	double  	Thetad;
 	double		Delta_Angle;
+	double		K;
+	double		Step;
+	double 		Robot_Velocity; // (Vr + Vl) / 2
+	/* Goal radius reached */
+	Check_Status			Goal_Flag;
+	/* GPS NEO M8P input coordinates */
+	double		Latitude;
+	double    Longitude;
+	int 			NbOfWayPoints;
+	int				GPS_Quality;
+	int				NbOfP;
+	/* Buffer read and write data */
 	char			TempBuffer[50][30];
 	double    Path_X[20];
 	double		Path_Y[20];
-	int				GPS_Quality;
-	int				NbOfP;
 	double		P_X[2000];
 	double    P_Y[2000];
 	double		P_Yaw[2000];
+	/* Error GPS code */
 	Vehicle_Error GPS_Error;
 }GPS;
 
@@ -276,6 +286,7 @@ Check_Status 		IsCorrectMessage(uint8_t *inputmessage, int length, uint8_t byte1
 Check_Status		StringHeaderCompare(char *s1, char header[]);
 Command_State		GetNbOfReceiveHeader(char *input);
 int							FeedBack(uint8_t *outputmessage, char inputstring[20]);
+Check_Status		IsDataTransferCompleted(void);
 /*--------Stanley functions and GPS --------------*/
 void						GPS_ParametersInit(GPS *pgps);
 void 						GPS_StanleyControl(GPS *pgps, double SampleTime, double M1Velocity, double M2Velocity);
